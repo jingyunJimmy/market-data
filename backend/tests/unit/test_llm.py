@@ -14,7 +14,9 @@ from types import SimpleNamespace
 import anthropic
 import httpx2 as httpx
 import pytest
+from anthropic import transform_schema
 
+from market_data.domain.insights.catalogue import CATALOGUE
 from market_data.domain.insights.models import (
     Confidence,
     EvidencePack,
@@ -185,11 +187,40 @@ def _pack(evidence: list | None = None) -> EvidencePack:
 def test_the_schemas_offer_exactly_the_domain_enums():
     """If a classification or type is added to the domain, the model has to be offered it."""
     pattern = patterns_schema()["properties"]["patterns"]["items"]["properties"]
-    suggestion = suggestions_schema()["properties"]["suggestions"]["items"]["properties"]
+    variants = suggestions_schema()["properties"]["suggestions"]["items"]["anyOf"]
 
     assert pattern["classification"]["enum"] == [c.value for c in PatternClassification]
     assert pattern["confidence"]["enum"] == [c.value for c in Confidence]
-    assert suggestion["type"]["enum"] == [t.value for t in SuggestionType]
+    assert [v["properties"]["type"]["enum"] for v in variants] == [[t.value] for t in SuggestionType]
+
+
+def test_each_suggestion_type_asks_for_its_catalogue_params_in_the_schema_claude_receives():
+    """Structured outputs close every object, so params with no listed properties could only be {}.
+
+    Checked after the SDK's own transform, since that is what is sent: it would,
+    for one, demote a `const` to unenforced description text.
+    """
+    variants = transform_schema(suggestions_schema())["properties"]["suggestions"]["items"]["anyOf"]
+
+    for variant, spec in zip(variants, CATALOGUE.values(), strict=True):
+        params = variant["properties"]["params"]
+        names = [p.name for p in spec.params]
+        assert variant["properties"]["type"]["enum"] == [spec.type.value]
+        assert (list(params["properties"]), params["required"]) == (names, names)
+        assert params["additionalProperties"] is False
+        for p in spec.params:
+            if p.choices:
+                assert params["properties"][p.name]["enum"] == list(p.choices)
+
+
+def test_a_type_with_a_fixed_kind_is_offered_only_that_kind():
+    """Only a custom rule leaves cleansing-or-validation to the model."""
+    variants = suggestions_schema()["properties"]["suggestions"]["items"]["anyOf"]
+    kinds = {v["properties"]["type"]["enum"][0]: v["properties"]["kind"]["enum"] for v in variants}
+
+    assert kinds["expected_window"] == ["validation"]
+    assert kinds["dedupe_policy"] == ["cleansing"]
+    assert kinds["custom"] == ["cleansing", "validation"]
 
 
 def test_the_schemas_carry_a_title_langchains_structured_output_needs():

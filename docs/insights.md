@@ -136,9 +136,17 @@ reader can check that reasoning themselves.
 
 The rule changes a suggestion can propose are a **closed set**, defined once in
 [`catalogue.py`](../backend/src/market_data/domain/insights/catalogue.py). The
-prompt lists it and asks the model to follow it, but verification only checks
-that `type` is one of these values -- not the parameters or constraints below,
-which are guidance to the model rather than something enforced afterwards.
+prompt lists it, and the suggestion JSON schema is built from it: one `anyOf`
+variant per type, pinning `type` (and `kind`, except for `custom`) and listing
+exactly that type's parameters, with fixed choices as enums. Claude's
+structured output enforces that shape while the answer is written, so every
+suggestion arrives with its parameters filled in.
+
+This has to be spelled out per type. Structured outputs close every object
+(`additionalProperties: false`), so a generic `params: {"type": "object"}`
+could only ever be `{}`: a suggestion with no window, no value and no rule in
+it. The constraints in the last column below are still guidance to the model,
+not checked afterwards.
 
 | Type | Kind | Parameters | Constraint the prompt asks the model to honour |
 |---|---|---|---|

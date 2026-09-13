@@ -1,10 +1,12 @@
 """The rule changes a suggestion may propose, and what each one needs.
 
 This table is what the LLM prompt lists as the closed set of types a
-suggestion may use, so a model can only pick from what exists here.
-:mod:`market_data.domain.insights.verify` does not check a suggestion's
-parameters against it -- that is left to the model to get right, guided by
-the descriptions below.
+suggestion may use, and what the suggestion JSON schema is built from, so a
+model can only pick a type from here and must fill in exactly that type's
+parameters, from ``choices`` where there are any.
+:mod:`market_data.domain.insights.verify` does not check the parameter values
+against it -- whether a window or a value is right is left to the model,
+guided by the descriptions below.
 """
 
 from __future__ import annotations

@@ -541,6 +541,6 @@ byte-identically without a numpy dependency.
 | add a dashboard section | ② | a component under `frontend/src/app/`, plus a resource in `store.ts` |
 | add a quality check | ③ | write the function in `domain/quality/checks/`, add it to `all_rules()` |
 | give the model more to reason from | ④ | add a field to `Evidence`, compute it in `domain/insights/evidence.py`, describe it in `llm/prompts.py`, and mirror it in `frontend/src/app/core/models.ts` |
-| offer a new kind of suggested rule | ④ | add a `SuggestionType` and its entry in `domain/insights/catalogue.py` — the prompt lists the catalogue and the JSON schema offers the enum — then add it to `SuggestionType` and `TYPE_LABEL` in the frontend |
+| offer a new kind of suggested rule | ④ | add a `SuggestionType` and its entry in `domain/insights/catalogue.py` — the prompt lists the catalogue and the JSON schema is built from it, one variant per type with that type's params — then add it to `SuggestionType` and `TYPE_LABEL` in the frontend |
 | use a different Claude model | ④ | set `MARKET_DATA_LLM_MODEL` |
 | use a different LLM provider | ④ | write a client beside `llm/claude.py` with the same `model` property and `complete_json(system, user, schema)` method over that provider's LangChain chat model, build it in `api/deps.py`, and widen the `client` type `InsightsService` accepts |

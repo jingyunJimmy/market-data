@@ -4,9 +4,11 @@ The prompts carry the domain knowledge the evidence cannot: how these markets
 trade, and how each quality check decides what to flag. Without it a model
 cannot tell a scheduled halt from an outage, which is the whole question.
 
+The suggestion schema is built from the catalogue, so each type's parameter
+names and choices are enforced as Claude writes the answer.
 :mod:`market_data.domain.insights.verify` only checks the JSON shape, so the
-grounding and catalogue rules stated here are guidance the model is asked to
-follow, not something enforced afterwards.
+grounding rules stated here are guidance the model is asked to follow, not
+something enforced afterwards.
 """
 
 from __future__ import annotations
@@ -15,14 +17,13 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
-from market_data.domain.insights.catalogue import CATALOGUE
+from market_data.domain.insights.catalogue import CATALOGUE, ParamKind, ParamSpec, SuggestionSpec
 from market_data.domain.insights.models import (
     Confidence,
     EvidencePack,
     Pattern,
     PatternClassification,
     SuggestionKind,
-    SuggestionType,
 )
 
 _CONTEXT = """\
@@ -164,17 +165,37 @@ def patterns_schema() -> dict[str, Any]:
 
 
 def suggestions_schema() -> dict[str, Any]:
-    item = _object(
+    """One variant per catalogue type, each spelling out that type's parameters.
+
+    ``params`` cannot be a bare ``{"type": "object"}``: structured outputs close
+    every object (``additionalProperties: false``), and a closed object with no
+    listed properties has only one possible value, ``{}`` -- a suggestion with
+    no window, no value and no rule in it.
+    """
+    item = {"anyOf": [_suggestion_variant(spec) for spec in CATALOGUE.values()]}
+    return _object({"suggestions": {"type": "array", "items": item}}, title="suggestions")
+
+
+def _suggestion_variant(spec: SuggestionSpec) -> dict[str, Any]:
+    kinds = [spec.kind.value] if spec.kind else [k.value for k in SuggestionKind]
+    return _object(
         {
             "pattern_id": {"type": "string"},
-            "type": {"type": "string", "enum": [t.value for t in SuggestionType]},
-            "kind": {"type": "string", "enum": [k.value for k in SuggestionKind]},
-            # Free-form: each type has its own parameters, listed in the catalogue.
-            "params": {"type": "object"},
+            # An enum of one rather than `const`: the SDK's schema transform keeps
+            # `enum` but demotes `const` to description text, which is not enforced.
+            "type": {"type": "string", "enum": [spec.type.value]},
+            "kind": {"type": "string", "enum": kinds},
+            "params": _object({p.name: _param_schema(p) for p in spec.params}),
             "rationale": {"type": "string"},
         }
     )
-    return _object({"suggestions": {"type": "array", "items": item}}, title="suggestions")
+
+
+def _param_schema(param: ParamSpec) -> dict[str, Any]:
+    if param.choices:
+        return {"type": "string", "enum": list(param.choices), "description": param.description}
+    kind = "number" if param.kind is ParamKind.NUMBER else "string"
+    return {"type": kind, "description": param.description}
 
 
 def _catalogue() -> list[dict[str, Any]]:
