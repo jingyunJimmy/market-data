@@ -1,0 +1,117 @@
+<header class="topbar">
+  <div>
+    <h1>Futures Market Data</h1>
+    <p>Daily OHLCV bars, rolling VWAP, and data-quality validation over ingested futures bars.</p>
+    <p class="topbar__note">
+      All dates and times are shown in Chicago time (CT: UTC-6 in winter, UTC-5 in summer).
+    </p>
+  </div>
+  @if (store.selection(); as selection) {
+    <dl class="context">
+      <div>
+        <dt>Exchange</dt>
+        <dd>{{ selection.exchange || '—' }}</dd>
+      </div>
+      <div>
+        <dt>Root</dt>
+        <dd>{{ selection.root }}</dd>
+      </div>
+      <div>
+        <dt>Stored bars</dt>
+        <dd>{{ selection.bars.toLocaleString('en-GB') }}</dd>
+      </div>
+      <div>
+        <dt>Available</dt>
+        <dd>{{ selection.first_date }} → {{ selection.last_date }}</dd>
+      </div>
+    </dl>
+  }
+</header>
+
+@if (store.unreachable()) {
+  <p class="notice notice--error">
+    Cannot reach the API. From <code>backend/</code>, run <code>poetry run market-data-serve</code>,
+    then reload.
+  </p>
+} @else if (!store.contractNames().length) {
+  <p class="notice">
+    @if (store.catalogue.isLoading()) {
+      Loading the contract catalogue…
+    } @else {
+      No data ingested yet. From <code>backend/</code>, run
+      <code>poetry run python scripts/ingest.py "data/raw/data/**/*.parquet"</code>.
+    }
+  </p>
+} @else {
+  <section class="filters" aria-label="Filters">
+    <label>
+      Contract
+      <select (change)="store.contract.set(value($event))">
+        @for (name of store.contractNames(); track name) {
+          <option [value]="name" [selected]="name === store.contract()">{{ name }}</option>
+        }
+      </select>
+    </label>
+
+    <label>
+      Frequency
+      <select (change)="store.frequency.set($any(value($event)))">
+        <option value="minute" [selected]="store.frequency() === 'minute'">Minute</option>
+        <option value="daily" [selected]="store.frequency() === 'daily'">Daily</option>
+      </select>
+    </label>
+
+    <label>
+      Start
+      <input
+        type="date"
+        [value]="store.start()"
+        [min]="store.selection()?.first_date"
+        [max]="store.end()"
+        (change)="store.start.set(value($event))"
+      />
+    </label>
+
+    <label>
+      End
+      <input
+        type="date"
+        [value]="store.end()"
+        [min]="store.start()"
+        [max]="store.selection()?.last_date"
+        (change)="store.end.set(value($event))"
+      />
+    </label>
+
+    <label>
+      VWAP window
+      <select
+        [disabled]="store.frequency() !== 'minute'"
+        (change)="store.vwapWindow.set(+value($event))"
+      >
+        @for (minutes of windows; track minutes) {
+          <option [value]="minutes" [selected]="minutes === store.vwapWindow()">
+            {{ minutes }} min
+          </option>
+        }
+      </select>
+    </label>
+  </section>
+
+  <nav class="tabs" aria-label="Sections">
+    <button type="button" [class.active]="tab() === 'analytics'" (click)="tab.set('analytics')">
+      Dashboard
+    </button>
+    <button type="button" [class.active]="tab() === 'quality'" (click)="tab.set('quality')">
+      Data quality
+    </button>
+  </nav>
+
+  <main>
+    @if (tab() === 'analytics') {
+      <app-analytics />
+    } @else {
+      <app-quality />
+    }
+  </main>
+}

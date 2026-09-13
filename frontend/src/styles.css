@@ -1,0 +1,201 @@
+/* Design tokens and element defaults. Component styles live with their components. */
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --border: #e2e5ec;
+  --border-strong: #cdd2dc;
+  --text: #161a21;
+  --muted: #616b7c;
+  --accent: #1f5fd6;
+  --up: #12805c;
+  --down: #c0392b;
+  --warn: #a8690b;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    ui-sans-serif,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  background: rgba(31, 95, 214, 0.08);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+select,
+input[type='date'] {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 0 0.55rem;
+  min-width: 9rem;
+  /* Native select and date controls have different intrinsic heights, so pin both. */
+  height: 2.25rem;
+  line-height: normal;
+}
+
+input[type='date']::-webkit-datetime-edit,
+input[type='date']::-webkit-datetime-edit-fields-wrapper {
+  padding: 0;
+}
+
+/* Icons: replace the native select arrow with a chevron drawn at the same inset as the
+   calendar icon, so the right edges of both controls line up. */
+input[type='date']::-webkit-calendar-picker-indicator {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+select {
+  appearance: none;
+  padding-right: calc(0.55rem + 1rem + 0.4rem);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23161a21' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.55rem center;
+  background-size: 1rem 1rem;
+  cursor: pointer;
+}
+
+select:disabled {
+  cursor: default;
+}
+
+select:focus-visible,
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+select:disabled {
+  background: var(--bg);
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------------ */
+/* Panel primitives -- shared by the dashboard sections, defined once. */
+/* ------------------------------------------------------------------ */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.card {
+  display: block;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.1rem 1.25rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.card > header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.card > header h2 {
+  font-size: 0.95rem;
+}
+
+.card > header span {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.placeholder {
+  margin: 0;
+  padding: 2.5rem 0;
+  text-align: center;
+  color: var(--muted);
+}
+
+.placeholder--error {
+  color: var(--down);
+}
+
+.placeholder--clean {
+  color: var(--up);
+}
+
+.table-scroll {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-scroll th,
+.table-scroll td {
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.table-scroll th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.table-scroll tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table-scroll .num {
+  text-align: right;
+}

@@ -1,0 +1,61 @@
+<div class="stats">
+  <app-stat label="Sessions" [value]="format.count(bars().length)" />
+  <app-stat label="Last close" [value]="format.price(lastClose())" />
+  <app-stat label="Range change" [value]="format.percent(rangeChange())" [tone]="tone()" />
+  <app-stat label="Total volume" [value]="format.count(totalVolume())" />
+</div>
+
+<section class="card">
+  <header>
+    <h2>Daily OHLCV</h2>
+    <span>
+      @if (store.frequency() === 'minute') {
+        Aggregated from minute bars into exchange sessions
+      } @else {
+        Vendor daily bars, passed through
+      }
+    </span>
+  </header>
+
+  @if (store.dailyBars.isLoading()) {
+    <p class="placeholder">Loading bars…</p>
+  } @else if (store.dailyBars.error()) {
+    <p class="placeholder placeholder--error">Could not load daily bars.</p>
+  } @else if (!bars().length) {
+    <p class="placeholder">No bars in the selected range.</p>
+  } @else {
+    <app-chart [series]="candles()" [height]="420" />
+  }
+</section>
+
+<section class="card">
+  <header>
+    <h2>Rolling {{ store.vwapWindow() }}-minute VWAP</h2>
+    <span>
+      @if (store.vwap.value(); as series) {
+        {{ format.count(series.total_points) }} points
+        @if (series.truncated) {
+          · showing the latest {{ format.count(series.points.length) }}
+        }
+      }
+    </span>
+  </header>
+
+  @if (store.frequency() !== 'minute') {
+    <p class="placeholder">
+      A trailing intraday window needs minute bars. Switch the frequency filter to minute.
+    </p>
+  } @else if (store.vwap.isLoading()) {
+    <p class="placeholder">Computing VWAP…</p>
+  } @else if (store.vwap.error()) {
+    <p class="placeholder placeholder--error">Could not load the VWAP series.</p>
+  } @else if (!store.vwap.value()?.points?.length) {
+    <p class="placeholder">No minute bars in the selected range.</p>
+  } @else {
+    <app-chart [series]="vwapSeries()" [height]="300" [intraday]="true" />
+    <p class="legend">
+      <span class="swatch swatch--vwap"></span> VWAP
+      <span class="swatch swatch--typical"></span> Typical price (high + low + close) / 3
+    </p>
+  }
+</section>

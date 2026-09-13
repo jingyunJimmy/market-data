@@ -1,0 +1,62 @@
+# ---------------------------------------------------------------------------
+# backend/ -- Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+poetry.lock
+
+# tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+
+# coverage (.coverage.* comes from parallel runs)
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# packaging output
+build/
+dist/
+
+# ---------------------------------------------------------------------------
+# frontend/ -- Node / Angular
+# ---------------------------------------------------------------------------
+node_modules/
+.angular/
+*.tsbuildinfo
+npm-debug.log*
+
+# ---------------------------------------------------------------------------
+# backend/data/ -- rebuildable artefacts
+# ---------------------------------------------------------------------------
+# The downloaded dataset and the DuckDB store are reproducible:
+#   backend/scripts/fetch_data.py  ->  backend/data/raw/
+#   backend/scripts/ingest.py      ->  backend/data/market_data.duckdb
+# backend/data/fixtures/ is committed on purpose -- the tests depend on it.
+/backend/data/raw/
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp/
+
+# ---------------------------------------------------------------------------
+# Local environment (.env.example is committed as the template)
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# ---------------------------------------------------------------------------
+# Editor / agent tooling (machine-local)
+# ---------------------------------------------------------------------------
+.claude/
+.agents/
+.idea/
+.vscode/
+.DS_Store
+*.log

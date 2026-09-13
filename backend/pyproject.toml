@@ -1,0 +1,92 @@
+[project]
+name = "market-data"
+version = "0.1.0"
+description = "Ingest historical futures market data, generate analytics, and surface data-quality issues."
+authors = [{ name = "Jingyun Shen", email = "jingyunshen95@gmail.com" }]
+requires-python = ">=3.11,<4.0"
+dependencies = [
+    "polars>=1.9",
+    "duckdb>=1.1",
+    "pyarrow>=17.0",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-dateutil>=2.9",
+]
+
+[project.optional-dependencies]
+data = ["huggingface-hub>=0.24"]
+
+[project.scripts]
+market-data-serve = "market_data.api.main:serve"
+
+[tool.poetry]
+packages = [{ include = "market_data", from = "src" }]
+requires-poetry = ">=2.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.3"
+pytest-cov = ">=5.0"
+pytest-asyncio = ">=0.24"
+# starlette.testclient runs on httpx2; plain httpx works but warns.
+httpx2 = ">=2.0"
+hypothesis = ">=6.112"
+ruff = ">=0.6"
+mypy = ">=1.11"
+
+[build-system]
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+markers = ["integration: end-to-end tests that touch the full stack"]
+# Treat our own deprecations as errors; tolerate third-party ones.
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "error::DeprecationWarning:market_data",
+]
+
+[tool.coverage.run]
+source = ["market_data"]
+branch = true
+
+[tool.ruff]
+line-length = 110
+src = ["src", "tests"]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF", "PTH"]
+ignore = ["B008"]  # FastAPI relies on function calls in argument defaults
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["market_data"]
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+# Pragmatic rather than --strict: Polars' scalar accessors (.min(), .row()[i] ...)
+# return very broad unions that make strict mode noisy without adding safety.
+# We keep the checks that catch real mistakes.
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = ["duckdb.*", "polars.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# These two modules do heavy Polars scalar extraction; the union-typed results
+# are handled correctly at runtime and covered by tests.
+module = ["market_data.domain.quality.checks.gaps", "market_data.domain.quality.checks.outliers"]
+disable_error_code = ["operator", "arg-type", "return-value", "union-attr", "index", "str-bytes-safe"]

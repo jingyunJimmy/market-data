@@ -1,0 +1,204 @@
+.badge {
+  display: inline-block;
+  min-width: 4.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.badge--error {
+  background: rgba(192, 57, 43, 0.12);
+  color: var(--down);
+}
+
+.badge--warning {
+  background: rgba(168, 105, 11, 0.14);
+  color: var(--warn);
+}
+
+.badge--info {
+  background: rgba(97, 107, 124, 0.12);
+  color: var(--muted);
+}
+
+.ts {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.detail {
+  white-space: normal;
+  min-width: 22rem;
+  color: var(--muted);
+}
+
+/* -- evidence drill-down ------------------------------------------------- */
+
+.row--expandable {
+  cursor: pointer;
+}
+
+.row--expandable:hover {
+  background: rgba(97, 107, 124, 0.06);
+}
+
+.row--open {
+  background: rgba(97, 107, 124, 0.08);
+}
+
+.drill {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent, #2f6fb0);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.drill:hover {
+  text-decoration: underline;
+}
+
+.row--evidence > td {
+  padding: 0;
+  background: rgba(97, 107, 124, 0.04);
+}
+
+.evidence {
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
+/* Own scroll container: a detail table can be wider than the summary above it,
+   and the page body must never scroll sideways. Capped in height so the pager
+   below it stays reachable without scrolling the whole card away. */
+.evidence__scroll {
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.evidence__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.6rem;
+}
+
+.evidence__pager {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.evidence__pager button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.evidence table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.evidence th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface, #fff);
+  text-transform: capitalize;
+}
+
+.evidence__note {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+/* -- missing-timestamp listing -------------------------------------------- */
+
+.missing__legend {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* Own scroll container so a long page never stretches the card. */
+.missing {
+  max-height: 26rem;
+  overflow-y: auto;
+}
+
+.missing__day {
+  display: grid;
+  grid-template-columns: 6.5rem auto 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--border, rgba(97, 107, 124, 0.18));
+}
+
+.missing__day h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.missing__count {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.missing__times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.chip {
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chip--suspect {
+  background: rgba(168, 105, 11, 0.14);
+  color: var(--warn);
+}
+
+.chip--expectedish {
+  background: rgba(97, 107, 124, 0.12);
+  color: var(--muted);
+}
+
+.missing__pager {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.missing__pager button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* A text cell in the evidence table: a row_hash is 40 characters, so cap the
+   width and let the title attribute carry the full value. */
+.evidence td.text {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.95em;
+}

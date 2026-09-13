@@ -1,0 +1,23 @@
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.9rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.swatch {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.swatch--vwap {
+  background: #1f5fd6;
+}
+
+.swatch--typical {
+  background: #9aa4b5;
+  margin-left: 1rem;
+}

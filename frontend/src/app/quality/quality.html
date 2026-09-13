@@ -1,0 +1,245 @@
+<div class="stats">
+  <app-stat label="Bars checked" [value]="format.count(report()?.bars_checked)" />
+  <app-stat
+    label="Errors"
+    [value]="format.count(errors())"
+    [tone]="errors() ? 'error' : 'neutral'"
+  />
+  <app-stat
+    label="Warnings"
+    [value]="format.count(warnings())"
+    [tone]="warnings() ? 'warning' : 'neutral'"
+  />
+  <app-stat label="Informational" [value]="format.count(infos())" />
+</div>
+
+<section class="card">
+  <header>
+    <h2>Findings</h2>
+    <span>
+      {{ store.frequency() === 'minute' ? 'Minute' : 'Daily' }} bars ·
+      {{ format.count(issues().length) }} distinct findings
+    </span>
+  </header>
+
+  @if (store.quality.isLoading()) {
+    <p class="placeholder">Running validation…</p>
+  } @else if (store.quality.error()) {
+    <p class="placeholder placeholder--error">Could not load the quality report.</p>
+  } @else if (!issues().length) {
+    <p class="placeholder placeholder--clean">No issues detected for this contract and range.</p>
+  } @else {
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Severity</th>
+            <th>Category</th>
+            <th>Check</th>
+            <th class="num">Occurrences</th>
+            <th>First seen</th>
+            <th>Last seen</th>
+            <th>Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (issue of issues(); track issue.contract + ':' + issue.code) {
+            <tr
+              [class.row--expandable]="hasDetails(issue)"
+              [class.row--open]="isExpanded(issue)"
+              (click)="toggle(issue)"
+            >
+              <td>
+                <span class="badge badge--{{ issue.severity }}">{{ issue.severity }}</span>
+              </td>
+              <td>{{ issue.category }}</td>
+              <td>
+                <code>{{ issue.code }}</code>
+              </td>
+              <td class="num">{{ format.count(issue.count) }}</td>
+              <td class="ts">{{ stamp(issue.start_ts) }}</td>
+              <td class="ts">{{ stamp(issue.end_ts) }}</td>
+              <td class="detail">
+                {{ issue.message }}
+                @if (hasDetails(issue)) {
+                  <button
+                    type="button"
+                    class="drill"
+                    [attr.aria-expanded]="isExpanded(issue)"
+                    (click)="$event.stopPropagation(); toggle(issue)"
+                  >
+                    {{ isExpanded(issue) ? 'Hide' : 'Show' }}
+                    {{ format.count(issue.detail_total) }}
+                    {{ issue.detail_total === 1 ? 'occurrence' : 'occurrences' }}
+                  </button>
+                }
+              </td>
+            </tr>
+
+            <!--
+              The evidence table. Columns come from the union of `values` keys
+              on the rows, so every category renders through this one template:
+              gaps show missing-bar counts, the rest show the bar's own OHLCV
+              alongside whatever the check measured.
+            -->
+            @if (isExpanded(issue)) {
+              <tr class="row--evidence">
+                <td colspan="7">
+                  <div class="evidence">
+                    @if (store.issueDetails.error()) {
+                      <p class="placeholder placeholder--error">
+                        Could not load this finding's evidence.
+                      </p>
+                    } @else {
+                      <div class="evidence__scroll">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>When</th>
+                              @if (hasRanges()) {
+                                <th>Through</th>
+                              }
+                              @for (col of detailColumns(); track col) {
+                                <th [class.num]="isNumericColumn(col)">
+                                  {{ columnLabel(col) }}
+                                </th>
+                              }
+                            </tr>
+                          </thead>
+                          <tbody>
+                            @for (detail of detailRows(); track $index) {
+                              <tr>
+                                <td class="ts">{{ when(detail) }}</td>
+                                @if (hasRanges()) {
+                                  <td class="ts">{{ through(detail) }}</td>
+                                }
+                                @for (col of detailColumns(); track col) {
+                                  <!--
+                                    title carries the untruncated value: a
+                                    row_hash is 40 characters and would
+                                    otherwise stretch every other column.
+                                  -->
+                                  <td
+                                    [class.num]="isNumericColumn(col)"
+                                    [class.text]="!isNumericColumn(col)"
+                                    [attr.title]="cell(detail, col)"
+                                  >
+                                    {{ cell(detail, col) }}
+                                  </td>
+                                }
+                              </tr>
+                            }
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div class="evidence__foot">
+                        <span class="evidence__note">
+                          {{ format.count(detailFrom()) }}–{{ format.count(detailTo()) }} of
+                          {{ format.count(detailTotal()) }}
+                          @if (store.issueDetails.isLoading()) {
+                            · loading…
+                          }
+                        </span>
+                        @if (detailTotal() > detailPageSize) {
+                          <span class="evidence__pager">
+                            <button
+                              type="button"
+                              [disabled]="!canPageDetailsBack()"
+                              (click)="store.previousDetailPage()"
+                            >
+                              Previous
+                            </button>
+                            <button
+                              type="button"
+                              [disabled]="!canPageDetailsForward()"
+                              (click)="store.nextDetailPage()"
+                            >
+                              Next {{ format.count(detailPageSize) }}
+                            </button>
+                          </span>
+                        }
+                      </div>
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>
+
+<!--
+  The flat listing. Deliberately its own section rather than another drill-down:
+  the findings above answer "how bad is it", this answers "which instants are
+  gone", and the two have wildly different volumes.
+-->
+<section class="card">
+  <header>
+    <h2>Missing timestamps</h2>
+    <span>
+      @if (missingTotal()) {
+        {{ format.count(missingTotal()) }} absent
+        {{ isDaily() ? 'sessions' : 'bars' }}
+        @if (missing()?.expected_interval_s) {
+          · {{ missing()!.expected_interval_s }}s interval
+        }
+      } @else {
+        Absences the exchange calendar does not explain
+      }
+    </span>
+  </header>
+
+  @if (store.missing.isLoading()) {
+    <p class="placeholder">Expanding gaps…</p>
+  } @else if (store.missing.error()) {
+    <p class="placeholder placeholder--error">Could not load the missing timestamps.</p>
+  } @else if (!missingTotal()) {
+    <p class="placeholder placeholder--clean">
+      No unexplained absences for this contract and range. Weekends and the daily halt are excluded
+      by design.
+    </p>
+  } @else {
+    <p class="missing__legend">
+      Showing {{ format.count(missingFrom()) }}–{{ format.count(missingTo()) }} of
+      {{ format.count(missingTotal()) }}. <span class="chip chip--suspect">intra-session</span> sits
+      inside a live session; <span class="chip chip--expectedish">extended</span> spans a day or
+      more and is often a holiday.
+    </p>
+
+    <div class="missing">
+      @if (isDaily()) {
+        <!-- One chip per date: a daily session needs no grouping. -->
+        <div class="missing__times">
+          @for (entry of missing()!.timestamps; track entry.ts) {
+            <span class="chip chip--{{ toneOf(entry) }}">{{ entry.label }}</span>
+          }
+        </div>
+      } @else {
+        @for (day of missingDays(); track day.date) {
+          <div class="missing__day">
+            <h3>{{ day.date }}</h3>
+            <span class="missing__count">{{ format.count(day.entries.length) }}</span>
+            <div class="missing__times">
+              @for (entry of day.entries; track entry.ts) {
+                <span class="chip chip--{{ toneOf(entry) }}">{{ timeOf(entry) }}</span>
+              }
+            </div>
+          </div>
+        }
+      }
+    </div>
+
+    <div class="missing__pager">
+      <button type="button" [disabled]="!canPageBack()" (click)="store.previousMissingPage()">
+        Previous
+      </button>
+      <button type="button" [disabled]="!canPageForward()" (click)="store.nextMissingPage()">
+        Next {{ format.count(pageSize) }}
+      </button>
+    </div>
+  }
+</section>
