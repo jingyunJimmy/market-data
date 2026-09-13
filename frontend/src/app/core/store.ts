@@ -1,6 +1,13 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 
-import { BarsQuery, IssueDetailQuery, MarketDataApi, MissingQuery, VwapQuery } from './api';
+import {
+  BarsQuery,
+  InsightsQuery,
+  IssueDetailQuery,
+  MarketDataApi,
+  MissingQuery,
+  VwapQuery,
+} from './api';
 import { ContractSummary, Frequency } from './models';
 
 /** How much history to open on, by frequency -- enough to be useful, small enough to stay fast. */
@@ -16,6 +23,15 @@ function shiftDays(isoDate: string, days: number): string {
   const d = new Date(`${isoDate}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+function sameSelection(a: BarsQuery, b: BarsQuery): boolean {
+  return (
+    a.contract === b.contract &&
+    a.frequency === b.frequency &&
+    a.start === b.start &&
+    a.end === b.end
+  );
 }
 
 /**
@@ -100,6 +116,33 @@ export class DashboardStore {
   readonly missing = this.api.missingTimestamps(this.missingQuery);
   readonly issueDetails = this.api.issueDetails(this.detailQuery);
 
+  // -- insights, on request only ---------------------------------------- //
+
+  /**
+   * The selection insights were asked for, stamped with which press it was.
+   *
+   * Undefined until the button is pressed. Generating reads every occurrence and
+   * may call a model, so it happens because someone asked -- never because a
+   * filter moved.
+   */
+  private readonly insightsRequest = signal<InsightsQuery | undefined>(undefined);
+
+  /**
+   * The request, but only while the filters still match the ones it was made for.
+   *
+   * Compared here rather than only cleared by the effect below: the resource can
+   * read this before that effect runs, and a stale press must not generate for a
+   * selection nobody asked about.
+   */
+  private readonly insightsQuery = computed<InsightsQuery | undefined>(() => {
+    const request = this.insightsRequest();
+    const bars = this.barsQuery();
+    return request && bars && sameSelection(request, bars) ? request : undefined;
+  });
+
+  readonly insightsRequested = computed(() => this.insightsQuery() !== undefined);
+  readonly insights = this.api.insights(this.insightsQuery);
+
   constructor() {
     // Land on a real contract as soon as the catalogue arrives.
     effect(() => {
@@ -125,8 +168,18 @@ export class DashboardStore {
         this.missingOffset.set(0);
         this.detailOffset.set(0);
         this.expandedIssue.set(null);
+        // Insights describe the old selection. Coming back to it later must not
+        // quietly generate again.
+        this.insightsRequest.set(undefined);
       });
     });
+  }
+
+  /** Generate insights for the current selection, or generate them again. */
+  generateInsights(): void {
+    const bars = this.barsQuery();
+    if (!bars) return;
+    this.insightsRequest.update((previous) => ({ ...bars, run: (previous?.run ?? 0) + 1 }));
   }
 
   /** Open a finding's evidence, or close it if it is the one already open. */

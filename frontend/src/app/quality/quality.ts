@@ -5,6 +5,7 @@ import { DASH, count } from '../core/format';
 import { exchangeClock, exchangeDate, exchangeDateTime } from '../core/time';
 import { IssueDetail, MissingTimestamp, QualityIssue, Severity } from '../core/models';
 import { Stat } from '../shared/stat';
+import { Insights } from './insights';
 
 /** A day's worth of absences, which is how the minute listing is read. */
 interface MissingDay {
@@ -14,7 +15,7 @@ interface MissingDay {
 
 @Component({
   selector: 'app-quality',
-  imports: [Stat],
+  imports: [Stat, Insights],
   templateUrl: './quality.html',
   styleUrl: './quality.css',
 })

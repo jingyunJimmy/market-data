@@ -9,7 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: Backend root. This file is at ``backend/src/market_data/config.py``, so the
@@ -53,6 +53,23 @@ class Settings(BaseSettings):
     one would make the report heavier than the bars it describes. The client is
     told the real total and that the list was cut, so the figure stays honest.
     """
+
+    # Intelligent insights, read by an LLM
+    insights_max_occurrences: int = 50_000
+    """Per-issue cap on occurrences the evidence statistics are computed from.
+
+    Far above ``issue_detail_limit``: a distribution drawn from a 500-row
+    sample of a 9,500-row finding would describe the sample, not the finding.
+    The evidence records how many rows it actually analysed.
+    """
+    llm_model: str = "claude-sonnet-5"
+    """The Claude model that reads the evidence."""
+    llm_api_key: SecretStr | None = None
+    """Defaults to the ``ANTHROPIC_API_KEY`` environment variable when unset."""
+    llm_max_tokens: int = 16_000
+    """Output cap per request."""
+    llm_timeout_s: float = 180.0
+    """Per request."""
 
 
 @lru_cache

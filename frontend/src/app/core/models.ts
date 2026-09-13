@@ -110,3 +110,112 @@ export interface QualityReport {
   bars_checked: number;
   issues: QualityIssue[];
 }
+
+// -- intelligent insights (see `domain/insights/models.py`) --------------- //
+
+export type PatternClassification =
+  | 'expected_market_behavior'
+  | 'data_source_defect'
+  | 'threshold_miscalibration'
+  | 'ingestion_artifact'
+  | 'unknown';
+
+export type Confidence = 'low' | 'medium' | 'high';
+
+export type SuggestionType =
+  | 'expected_window'
+  | 'adjust_threshold'
+  | 'exclude_from_analytics'
+  | 'reject_at_ingest'
+  | 'dedupe_policy'
+  | 'custom';
+
+/** Cleansing changes what data is used; validation changes what is reported. */
+export type SuggestionKind = 'cleansing' | 'validation';
+
+export interface HourShare {
+  /** 0-23, exchange time. */
+  hour: number;
+  count: number;
+  /** Of `Evidence.analysed`, 0-1. */
+  share: number;
+}
+
+export interface PeriodCount {
+  start: string;
+  count: number;
+}
+
+/** Distribution statistics for one finding, computed by the backend. Patterns cite these by id. */
+export interface Evidence {
+  id: string;
+  contract: string;
+  code: string;
+  category: string;
+  severity: Severity;
+  occurrences: number;
+  /** Occurrences the statistics were computed from; below `occurrences` when capped. */
+  analysed: number;
+  per_1k_bars: number;
+  first_seen: string | null;
+  last_seen: string | null;
+  expected_interval_s: number | null;
+  days_affected: number | null;
+  days_affected_share: number | null;
+  top_hours: HourShare[];
+  weekday_counts: Record<string, number>;
+  median_duration_min: number | null;
+  p90_duration_min: number | null;
+  magnitude_metric: string | null;
+  max_magnitude: number | null;
+  share_after_gap: number | null;
+  period: string | null;
+  period_counts: PeriodCount[];
+}
+
+export interface InsightScope {
+  contract: string | null;
+  frequency: Frequency;
+  start: string | null;
+  end: string | null;
+  bars_checked: number;
+  trading_days: number;
+  timezone: string;
+  after_gap_window_min: number;
+}
+
+export interface Pattern {
+  id: string;
+  title: string;
+  classification: PatternClassification;
+  contracts: string[];
+  evidence_refs: string[];
+  explanation: string;
+  confidence: Confidence;
+}
+
+export interface Suggestion {
+  pattern_id: string;
+  type: SuggestionType;
+  kind: SuggestionKind;
+  params: Record<string, string | number | boolean | null>;
+  rationale: string;
+}
+
+/** Something a provider proposed that verification refused. */
+export interface Rejection {
+  stage: string;
+  item: string | null;
+  reason: string;
+}
+
+export interface InsightsReport {
+  scope: InsightScope;
+  /** The model that read the evidence. */
+  model: string | null;
+  generated_at: string;
+  evidence: Evidence[];
+  patterns: Pattern[];
+  suggestions: Suggestion[];
+  rejected: Rejection[];
+}

@@ -1,0 +1,278 @@
+.insights__lede {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.generate {
+  height: 2.25rem;
+  padding: 0 0.95rem;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.generate:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.generate:disabled {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Spins for the lifetime of the request; the button/placeholder text next to
+   it is what tells the reader what's loading. */
+.spinner {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.placeholder--loading {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.placeholder--loading .spinner {
+  border-color: rgba(97, 107, 124, 0.25);
+  border-top-color: var(--accent);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The shared placeholder is sized for an empty table; here it introduces a button. */
+.insights .placeholder {
+  padding: 0.75rem 0 0.25rem;
+  text-align: left;
+}
+
+.insights__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  align-items: center;
+  margin: 0 0 0.85rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.source {
+  padding: 0.05rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(31, 95, 214, 0.1);
+  color: var(--accent);
+}
+
+/* The API's reason: an endpoint URL is long and must wrap on a phone. */
+.failure__reason {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+/* -- patterns ------------------------------------------------------------- */
+
+.patterns {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pattern {
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.pattern__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.pattern h3 {
+  margin: 0.45rem 0 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.pattern__why {
+  margin: 0 0 0.5rem;
+}
+
+.tag {
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: rgba(97, 107, 124, 0.12);
+  color: var(--muted);
+}
+
+.tag--expected_market_behavior {
+  background: rgba(18, 128, 92, 0.12);
+  color: var(--up);
+}
+
+.tag--data_source_defect {
+  background: rgba(192, 57, 43, 0.12);
+  color: var(--down);
+}
+
+.tag--threshold_miscalibration {
+  background: rgba(168, 105, 11, 0.14);
+  color: var(--warn);
+}
+
+.tag--ingestion_artifact {
+  background: rgba(31, 95, 214, 0.1);
+  color: var(--accent);
+}
+
+.confidence {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* The figures, read off the evidence. Separated by a middle dot rather than
+   boxed, so a long list wraps like a sentence on a narrow screen. */
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.5rem;
+  align-items: baseline;
+  margin: 0;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.fact + .fact::before {
+  content: '·';
+  margin-right: 0.5rem;
+}
+
+/* -- suggestions ---------------------------------------------------------- */
+
+.suggestions {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suggestion {
+  padding: 0.6rem 0.75rem;
+  background: var(--bg);
+  border-radius: 6px;
+}
+
+.suggestion__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.kind {
+  padding: 0.02rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(97, 107, 124, 0.12);
+  color: var(--muted);
+}
+
+.kind--cleansing {
+  background: rgba(31, 95, 214, 0.1);
+  color: var(--accent);
+}
+
+.suggestion__rule {
+  margin: 0.35rem 0 0;
+}
+
+.params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+}
+
+.params div {
+  display: flex;
+  gap: 0.35rem;
+  align-items: baseline;
+}
+
+.params dt {
+  color: var(--muted);
+}
+
+.params dd {
+  margin: 0;
+}
+
+.suggestion__why {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* -- verification refusals ------------------------------------------------ */
+
+.rejected {
+  margin-top: 0.9rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.rejected summary {
+  cursor: pointer;
+}
+
+.rejected ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.rejected__stage {
+  margin-right: 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

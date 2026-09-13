@@ -10,7 +10,7 @@ per frequency, ambiguous timestamps, repeated rows, and real market artefacts
 that look like corruption. An analyst cannot answer "what did CL trade at last
 Tuesday, and can I trust that number?" without first cleaning the data by hand.
 
-This application closes that gap in three steps:
+This application closes that gap in four steps:
 
 - **Ingestion** — normalise any vendor file to a canonical bar schema; capture
   malformed rows with reasons; collapse exact duplicates; store exactly **one
@@ -22,6 +22,11 @@ This application closes that gap in three steps:
 - **Data quality** — missing timestamps and data gaps (session-aware),
   duplicate records, conflicts resolved at ingest but still reported, invalid
   prices/volumes (severity-aware), and statistical outliers.
+- **Intelligent insights** — on request, reads the quality findings for
+  recurring patterns (a gap at the same hour every session, outliers that
+  follow gaps, a feed that restates bars) and suggests cleansing or validation
+  rules. An LLM reads statistics computed from the findings; each pattern is
+  shown beside the statistics it cites, so a reader can check the reasoning.
 
 The headline trap the design turns on: in this dataset a minute file's
 `timestamp_ms` is **not** a UTC epoch, so reading it as one silently shifts
@@ -37,8 +42,9 @@ market-data/
 ├── backend/     Python service: FastAPI REST API
 │   ├── src/market_data/
 │   │   ├── ingestion/   file readers · normalisation · the ingest pipeline
-│   │   ├── domain/      canonical models · analytics · quality rules (pure, no I/O)
+│   │   ├── domain/      canonical models · analytics · quality rules · insights (pure, no I/O)
 │   │   ├── storage/     repository port + DuckDB adapter
+│   │   ├── llm/         Claude client (LangChain) + prompts for intelligent insights
 │   │   ├── services/    orchestration
 │   │   └── api/         HTTP routes
 │   ├── scripts/         fetch the dataset · ingest files · regenerate fixtures
@@ -60,6 +66,13 @@ the single place those locations are resolved.
 | Python | 3.11, 3.12 or 3.13 |
 | Poetry | 2.0 or newer |
 | Node.js | 22 |
+| A Claude API key | only for intelligent insights — see [Setting up the Claude API key](#setting-up-the-claude-api-key) |
+
+> **Intelligent insights need a Claude API key.** The analytics, charts and
+> data-quality report all work without one, but the **Generate insights** button
+> on the Data quality page calls Claude and shows an error until a key is
+> configured. Follow [Setting up the Claude API key](#setting-up-the-claude-api-key)
+> before trying it.
 
 ## Running the backend
 
@@ -69,6 +82,10 @@ All backend commands run from `backend/`.
 cd backend
 poetry install --all-extras
 ```
+
+If you want intelligent insights, create `backend/.env` with your Claude API key
+now, before starting the server. See
+[Setting up the Claude API key](#setting-up-the-claude-api-key).
 
 Then load data. **Start with the real dataset** — it is what the application was
 built against, and the analytics and quality report only say something worth
@@ -166,6 +183,9 @@ the VWAP window:
   session-by-session table.
 - **Data quality** — bars checked, counts by severity, and every finding with
   its severity, category, check code, occurrence count and timestamp span.
+  Below the findings, **Intelligent insights** generates recurring patterns and
+  suggested rules when you press its button — never on its own, because it
+  reads every occurrence behind every finding and asks an LLM.
 
 The frequency filter picks which stored series you are looking at: on `minute`
 the daily bars are aggregated from intraday data and VWAP is available; on
@@ -198,7 +218,7 @@ poetry run python scripts/make_fixtures.py             # regenerate test fixture
 ```
 
 `--help` on any of them lists its full interface. Everything else — the
-catalogue, daily bars, VWAP and the quality report — is served by the API.
+catalogue, daily bars, VWAP, the quality report and insights — is served by the API.
 
 ## The dataset
 
@@ -239,6 +259,7 @@ history, and pervasive legitimate overnight/weekend/holiday gaps.
 | `GET /quality/report` | the quality report for one contract, frequency and range |
 | `GET /quality/missing-timestamps` | every instant with no bar, paged |
 | `GET /quality/issue-details` | page through one finding's per-occurrence evidence |
+| `POST /insights` | recurring quality patterns and suggested rules for one contract, frequency and range, with the evidence they rest on and anything verification rejected |
 | `GET /health` | liveness + version |
 
 Interactive docs at `/docs`.
@@ -259,19 +280,91 @@ resolve against the working directory, so run the scripts and the API from
 | `MARKET_DATA_OUTLIER_MAD_THRESHOLD` | `8.0` | return-outlier sensitivity |
 | `MARKET_DATA_VOLUME_SPIKE_THRESHOLD` | `20.0` | volume-spike sensitivity |
 | `MARKET_DATA_GAP_MIN_MULTIPLE` | `1.5` | gap threshold, in modal bar intervals |
+| `MARKET_DATA_INSIGHTS_MAX_OCCURRENCES` | `50000` | per-finding cap on the occurrences insight statistics are computed from |
+| `MARKET_DATA_LLM_MODEL` | `claude-sonnet-5` | Claude model name |
+| `MARKET_DATA_LLM_API_KEY` | — | Claude API key, **required for intelligent insights** ([setup](#setting-up-the-claude-api-key)); falls back to `ANTHROPIC_API_KEY` when unset |
+| `MARKET_DATA_LLM_MAX_TOKENS` | `16000` | output cap per request |
+| `MARKET_DATA_LLM_TIMEOUT_S` | `180` | per request |
+
+### Setting up the Claude API key
+
+Intelligent insights are generated by Claude, through
+[LangChain](https://python.langchain.com/), so they need a Claude API key.
+Nothing else in the application does. You only have to do this once.
+
+1. **Get a key.** Sign in to the [Claude Console](https://console.anthropic.com/),
+   open **API Keys**, and create a key. It starts with `sk-ant-`. Copy it now;
+   the console shows it only once.
+
+2. **Create the environment file from the template.** From the repository root:
+
+   ```bash
+   cd backend
+   cp .env.example .env
+   ```
+
+   The file must be `backend/.env`. Settings are read from `.env` in the
+   working directory, and the API is started from `backend/`. `.env` is
+   git-ignored, so the key is never committed.
+
+3. **Put your key in.** Open `backend/.env` and replace the placeholder on the
+   last line with your key:
+
+   ```bash
+   # before
+   MARKET_DATA_LLM_API_KEY=sk-ant-***
+   # after
+   MARKET_DATA_LLM_API_KEY=sk-ant-api03-your-real-key
+   ```
+
+   Leave the `***` placeholder in and every request is rejected as an invalid
+   key. No quotes or spaces around the `=`. In this file the variable must be
+   named `MARKET_DATA_LLM_API_KEY`: an `ANTHROPIC_API_KEY` line in `.env` is
+   **not** picked up.
+
+4. **Optional: choose the model.** `MARKET_DATA_LLM_MODEL` defaults to
+   `claude-sonnet-5`. Change that line only if you want a different Claude model.
+
+5. **Start (or restart) the API** from `backend/`:
+
+   ```bash
+   poetry run market-data-serve
+   ```
+
+   Settings are read once at startup, so restart the server after any change to
+   `.env`. `--reload` watches the code, not `.env`.
+
+6. **Check it works.** Open the dashboard, go to **Data quality**, pick a
+   contract and press **Generate insights**. After a short wait, patterns and
+   suggested rules appear. If Claude cannot be reached or rejects the key, the
+   section says so and why.
+
+**Alternative: a shell variable.** Instead of steps 2–3, export the key in the
+terminal that runs the API. It is used only when `MARKET_DATA_LLM_API_KEY` is
+unset, so delete that line from `.env` if you have one:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-api03-your-real-key
+poetry run market-data-serve
+```
+
+See [docs/insights.md](docs/insights.md#configuring-the-llm) for the remaining
+LLM settings.
 
 ## Architecture
 
 See [docs/architecture.md](docs/architecture.md), which has a high-level diagram
-and one per module. In short: three modules — **data ingestion** (download,
-normalise, store), **dashboard presentation** (the two charts and their filters)
-and **data quality validation** (gaps, missing timestamps, duplicates, values,
-outliers) — each layered the same ports-and-adapters way, with a **domain**
-layer (models, analytics, quality rules) that is pure — no I/O — and
-infrastructure (file readers, the DuckDB repository) plugged in behind
-Protocols. Also
+and one per module. In short: four modules — **data ingestion** (download,
+normalise, store), **dashboard presentation** (the two charts and their filters),
+**data quality validation** (gaps, missing timestamps, duplicates, values,
+outliers) and **intelligent insights** (recurring patterns and the rules they
+suggest) — each layered the same ports-and-adapters way, with a **domain**
+layer (models, analytics, quality rules, insight evidence and verification)
+that is pure — no I/O — and infrastructure plugged in around it (file readers
+and the DuckDB repository behind Protocols, the Claude client in `llm/`). Also
 [docs/data-ingestion.md](docs/data-ingestion.md),
-[docs/data-quality.md](docs/data-quality.md) and
+[docs/data-quality.md](docs/data-quality.md),
+[docs/insights.md](docs/insights.md) (how the evidence is computed, what the LLM is asked, and what verification does and does not check) and
 [docs/dashboard-charts.md](docs/dashboard-charts.md) (every chart, plus how the
 rolling VWAP is computed) and [docs/testing.md](docs/testing.md).
 

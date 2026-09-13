@@ -2,7 +2,14 @@ import { TestBed } from '@angular/core/testing';
 import { Signal, signal } from '@angular/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { BarsQuery, IssueDetailQuery, MarketDataApi, MissingQuery, VwapQuery } from './api';
+import {
+  BarsQuery,
+  InsightsQuery,
+  IssueDetailQuery,
+  MarketDataApi,
+  MissingQuery,
+  VwapQuery,
+} from './api';
 import { ContractSummary } from './models';
 import { DETAIL_PAGE_SIZE, DashboardStore, MISSING_PAGE_SIZE } from './store';
 
@@ -20,6 +27,7 @@ class FakeApi {
   vwapQuery?: () => VwapQuery | undefined;
   missingQuery?: () => MissingQuery | undefined;
   detailQuery?: () => IssueDetailQuery | undefined;
+  insightsQuery?: () => InsightsQuery | undefined;
 
   contracts() {
     return { value: this.contractsValue, error: this.contractsError };
@@ -46,6 +54,11 @@ class FakeApi {
 
   issueDetails(query: () => IssueDetailQuery | undefined) {
     this.detailQuery = query;
+    return this.resource();
+  }
+
+  insights(query: () => InsightsQuery | undefined) {
+    this.insightsQuery = query;
     return this.resource();
   }
 
@@ -280,6 +293,59 @@ describe('DashboardStore', () => {
       expect(store.missingOffset()).toBe(0);
       expect(store.detailOffset()).toBe(0);
       expect(store.expandedIssue()).toBeNull();
+    });
+  });
+
+  describe('insights on request', () => {
+    it('asks for no insights until they are requested', () => {
+      // Generating reads every occurrence and may call a model, so opening the page
+      // must not.
+      api.contractsValue.set([summary()]);
+      settle();
+
+      expect(api.insightsQuery!()).toBeUndefined();
+      expect(store.insightsRequested()).toBe(false);
+    });
+
+    it('ignores a request made before there is a selection to generate for', () => {
+      store.generateInsights();
+
+      expect(api.insightsQuery!()).toBeUndefined();
+    });
+
+    it('requests the current selection when asked, and again on every press', () => {
+      // Each press is a new run, so regenerating with unchanged filters still asks.
+      api.contractsValue.set([summary()]);
+      settle();
+
+      store.generateInsights();
+      expect(api.insightsQuery!()).toEqual({
+        contract: 'CLZ24',
+        frequency: 'minute',
+        start: '2024-05-31',
+        end: '2024-06-30',
+        run: 1,
+      });
+
+      store.generateInsights();
+      expect(api.insightsQuery!()).toMatchObject({ run: 2 });
+    });
+
+    it('drops the request when the filters move, so a new selection never generates by itself', () => {
+      api.contractsValue.set([summary()]);
+      settle();
+      store.generateInsights();
+
+      store.end.set('2024-06-15');
+      // Undefined at once, before any effect has run: the resource may read it first.
+      expect(api.insightsQuery!()).toBeUndefined();
+      settle();
+
+      // Returning to the original selection is not a request either.
+      store.end.set('2024-06-30');
+      settle();
+      expect(api.insightsQuery!()).toBeUndefined();
+      expect(store.insightsRequested()).toBe(false);
     });
   });
 });

@@ -15,7 +15,7 @@ market-data/
 ├── backend/     the Python service: FastAPI, one installable package
 │   └── data/    raw/ (downloaded dataset) · fixtures/ (committed) · the DuckDB store
 ├── frontend/    the Angular dashboard
-├── docs/        this file, plus the ingestion and data-quality notes
+├── docs/        this file, plus notes on ingestion, charts, quality, insights, testing
 └── .github/     CI
 ```
 
@@ -31,12 +31,12 @@ separate top-level project: it depends on the canonical schema and the
 repository port, so splitting it out would need a third shared package for
 those, and three `pyproject.toml` files to express what one import already says.
 
-## The three modules
+## The four modules
 
-The system is **three modules** over one canonical schema and one store. Each
+The system is **four modules** over one canonical schema and one store. Each
 module owns a vertical slice — its own domain logic, its own application
-service, its own endpoints, and (for two of them) its own dashboard panel — so
-a change to gap detection never touches charting, and a change to charting
+service, its own endpoints, and (for three of them) its own dashboard section —
+so a change to gap detection never touches charting, and a change to charting
 never touches ingestion.
 
 | # | module | responsibility | backend code | frontend code |
@@ -44,6 +44,7 @@ never touches ingestion.
 | ① | **Data ingestion** | download the dataset · normalise to the canonical schema · store it, with an audit trail | `scripts/fetch_data.py`, `ingestion/` (`readers.py`, `normalize.py`, `pipeline.py`), `storage/` (`duckdb_repo.py`, `schema.sql`), `scripts/ingest.py` | — (offline, CLI only) |
 | ② | **Dashboard presentation** | the two charts and the filters that drive them | `domain/analytics/` (`daily_bars.py`, `vwap.py`), `services/analytics_service.py`, `api/routes/analytics.py`, `api/routes/contracts.py` | `core/store.ts`, `core/api.ts`, `analytics/analytics.ts`, `shared/chart.ts`, `shared/stat.ts` |
 | ③ | **Data quality validation** | gaps · missing timestamps · duplicates · values · outliers | `domain/quality/` (`checks/`, `rules.py`, `report.py`, `missing.py`, `details.py`), `services/quality_service.py`, `api/routes/quality.py` | `quality/quality.ts` |
+| ④ | **Intelligent insights** | recurring quality patterns · suggested cleansing and validation rules, on request | `domain/insights/` (`evidence.py`, `models.py`, `verify.py`, `catalogue.py`), `llm/` (`claude.py`, `prompts.py`), `services/insights_service.py`, `api/routes/insights.py` | `quality/insights.ts` |
 | — | *shared foundation* | canonical schema, settings, the storage port | `domain/models.py`, `config.py`, `storage/repository.py` | `core/models.ts`, `core/format.ts`, `core/time.ts` |
 
 All backend paths are under `backend/src/market_data/`, all frontend paths
@@ -75,25 +76,42 @@ under `frontend/src/app/`.
 │   filtering                 │      │   duplicates, values,        │
 │                             │      │   outliers                   │
 │   services/analytics_service│      │   services/quality_service   │
-└──────────────┬──────────────┘      └───────────────┬──────────────┘
-               └───────────────┬─────────────────────┘
-                               │
-                  ┌────────────▼────────────┐
-                  │ FastAPI REST            │
-                  │ api/routes/             │
-                  └────┬───────────────▲────┘
-                  JSON │               │ filters: contract, frequency,
-                       │               │ date range, VWAP window
-                  ┌────▼───────────────┴────┐
-                  │ Angular dashboard       │
-                  │ charts tab · quality tab│
-                  └─────────────────────────┘
+└──────────────┬──────────────┘      └───────┬─────────────┬────────┘
+               │                             │             │ same bars, same validator,
+               │                             │             │ every occurrence
+               │                             │ ┌───────────▼──────────────────┐
+               │                             │ │ MODULE 4                     │    ┌───────────────┐
+               │                             │ │ INTELLIGENT INSIGHTS         │    │ Claude        │
+               │                             │ │   on request: evidence →     │───▶│ via LangChain │
+               │                             │ │   patterns → suggested rules │◀───│ llm/claude.py │
+               │                             │ │                              │    └───────────────┘
+               │                             │ │   services/insights_service  │     aggregates out,
+               │                             │ └───────────┬──────────────────┘     JSON back
+               └──────────────┬──────────────┴─────────────┘
+                              │
+                 ┌────────────▼────────────┐
+                 │ FastAPI REST            │
+                 │ api/routes/             │
+                 └────┬───────────────▲────┘
+                 JSON │               │ filters: contract, frequency,
+                      │               │ date range, VWAP window;
+                      │               │ the "Generate insights" button
+                 ┌────▼───────────────┴────┐
+                 │ Angular dashboard       │
+                 │ charts tab · quality tab│
+                 └─────────────────────────┘
 ```
 
 Read it top to bottom: ingestion runs **once, offline**, and is the only writer;
-the other two modules are **read-only** consumers of the same store, reached
+the other three modules are **read-only** consumers of the same store, reached
 through the same API, and the dashboard's filters are the one thing that flows
 backwards.
+
+Module ④ sits on top of module ③: it loads the same bars, runs the same
+validator over them with a far higher evidence cap, and reasons only about the
+findings that come out. It is also the only module that reaches outside the
+process — to Claude, with aggregated statistics and never bars — and only when
+someone presses the button.
 
 ### How each module is layered
 
@@ -109,6 +127,7 @@ Every module is layered the same way, which is why they can be described once:
    ┌───────────────────────────────▼──────────────────────────────┐
    │ Application                                                  │
    │   IngestionService · AnalyticsService · QualityService       │
+   │   InsightsService                                            │
    │   orchestration: filter inputs, call domain, shape outputs   │
    └──────────┬───────────────────────────────────┬───────────────┘
               │                                   │
@@ -116,22 +135,25 @@ Every module is layered the same way, which is why they can be described once:
    │ Domain — pure, no I/O       │   │ Infrastructure — adapters    │
    │   models.py                 │◀──┤   ingestion/readers.py       │
    │   analytics/   quality/     │   │   storage/duckdb_repo.py     │
+   │   insights/                 │   │   llm/claude.py              │
    │   defines the ports         │   │   implement those ports      │
    └─────────────────────────────┘   └──────────────────────────────┘
 ```
 
 **Dependency rule:** arrows point inward. `domain/` imports nothing from
-`ingestion/`, `storage/`, or `api/`, and has no file, network, or DB access.
+`ingestion/`, `storage/`, `llm/` or `api/`, and has no file, network, or DB access.
 
 | Port (Protocol) | Location | Adapters | Used by |
 |---|---|---|---|
 | `FileReader` | `ingestion/readers.py` | `CsvReader`, `ParquetReader` | ① |
-| `BarRepository` | `storage/repository.py` | `DuckDbRepository` | ①②③ |
+| `BarRepository` | `storage/repository.py` | `DuckDbRepository` | ①②③④ |
 | `Rule` (callable) | `domain/quality/rules.py` | every function in `domain/quality/checks/` | ③ |
 
 Swapping DuckDB for a warehouse or adding an Avro reader is a new adapter — no
-change to services or domain. `IngestionService` is an application service like
-the other two; it just lives in `ingestion/` next to the readers and the
+change to services or domain. The LLM has no port of its own: `InsightsService`
+takes `ClaudeClient` (`llm/claude.py`) directly, and the tests hand it any object
+with the same `model` property and `complete_json` method. `IngestionService` is
+an application service like the others; it just lives in `ingestion/` next to the readers and the
 normaliser it drives, so the whole ingest path reads top to bottom in one
 package.
 
@@ -284,7 +306,7 @@ frontend/src/app/
             time.ts    Chicago-time display, and the shift that puts charts in it
   shared/   chart.ts   lightweight-charts lifecycle, series in / canvas out
             stat.ts    one headline figure
-  analytics/  quality/  the two panels
+  analytics/  quality/  the two panels; quality/ also holds the insights section
   app.*       shell: header, filter bar, tabs
 ```
 
@@ -355,7 +377,7 @@ function plus its name in that list.
 |---|---|
 | `duplicates` | conflicts are resolved at ingest, so this rule reports them from the audit trail (`resolved_instant_conflict`, warning) rather than from `bars`; the exact/repeated-timestamp rules remain for validating a raw frame |
 | `values` | **severity is context-aware**: daily `close` outside `[low,high]` is `INFO` (settlement); the same on a minute bar is `ERROR` |
-| `gaps` | infers modal bar interval per contract, restricts to the **active period** (first `volume>0`), classifies each gap as `intra_session_gap` / `extended_gap` / `session_break`; only the first two are warnings. Daily: business-day diff → `missing_sessions`, noting holidays cause some false positives |
+| `gaps` | infers modal bar interval per contract, restricts to the **active period** (first `volume>0`), classifies each gap as `intra_session_gap` / `extended_gap` / `session_break`; only the first two are warnings. Daily: business-day diff → `missing_sessions` |
 | `outliers` | median/MAD on log returns (robust to the very spikes it looks for); volume spikes vs a 50-bar rolling median |
 | *missing timestamps* | not a rule but a separate endpoint: the report summarises gaps in the thousands, the instants inside them number in the hundreds of thousands, so they are enumerated and paged on their own |
 
@@ -364,6 +386,58 @@ frequency, a timestamp span, a count, and a `context` dict. The two endpoints
 beyond `/report` exist because of volume: `missing-timestamps` enumerates every
 absent instant, and `issue-details` pages past the sample of evidence the report
 carries.
+
+---
+
+## ④ Intelligent insights
+
+On request, reads the quality findings for **recurring patterns** and proposes
+**cleansing or validation rules**. The division of labour is the design: code
+computes the evidence, an LLM draws conclusions from it, and code checks that
+each conclusion is well-formed before it is shown — beside the evidence it
+cites, so a reader can judge the reasoning.
+[insights.md](insights.md) has the detail.
+
+```
+ Insights section (quality/insights.ts) — a button; nothing runs until it is pressed
+          │
+          ▼
+ api/routes/insights.py   POST /insights
+          │
+          ▼
+ InsightsService   services/insights_service.py
+          │
+          ├── load_bars() + load_superseded() ──▶ QualityValidator (module ③),
+          │                                       evidence cap raised to
+          │                                       insights_max_occurrences
+          ▼
+ build_evidence_pack()   domain/insights/evidence.py   pure
+   per finding: exchange-time hours, days affected, weekdays, durations,
+   magnitude, share after a gap, trend
+          │
+          ▼
+ _identify_patterns ──▶ verify_patterns      domain/insights/verify.py
+          │                schema only: fields, types, enum values
+          ▼
+ _suggest_rules     ──▶ verify_suggestions
+          │                schema only: a catalogued type, a valid kind
+          ▼
+ InsightsReport: evidence · patterns · suggestions · what was rejected and why
+
+ both calls: ClaudeClient.complete_json  llm/claude.py, Claude through LangChain
+             prompts and JSON schemas     llm/prompts.py
+```
+
+`InsightsService` builds the prompt (`llm/prompts.py`), calls
+`ClaudeClient.complete_json` and hands the parsed JSON straight to
+`verify_patterns`/`verify_suggestions` — there is no adapter class in between.
+Verification checks the shape of each item, not whether its figures match the
+evidence; see [insights.md](insights.md#3-verification).
+
+If the LLM produces no usable answer at all — unreachable, timed out,
+unparseable — the route answers **503** with the reason, and the dashboard shows
+it. An answer that is malformed in places is not a failure: verification
+drops the malformed items, keeps the rest, and returns the refusals.
 
 ## Storage
 
@@ -389,7 +463,7 @@ data-quality count, and only the second is worth storing with its values.
 
 ## Testing strategy
 
-117 tests, `poetry run pytest` from `backend/`.
+157 tests, `poetry run pytest` from `backend/`.
 
 | layer | how |
 |---|---|
@@ -398,6 +472,7 @@ data-quality count, and only the second is worth storing with its values.
 | services | in-memory DuckDB repository, real fixtures end-to-end: re-ingest idempotency, the one-bar-per-instant invariant, a simulated vendor correction across two runs, and that a resolved conflict still appears in the quality report |
 | API | FastAPI `TestClient`, isolated temp DB per test: date bounds, aggregation, VWAP truncation, required parameters, and missing-timestamp paging |
 | scripts | `scripts/ingest.py` driven end-to-end against a temp DB |
+| insights | evidence statistics on hand-built reports (exchange time, daily dates, after-gap timing, caps); schema verification one malformed item at a time; the Claude client driven by a scripted LangChain model, never a live one; a planted daily halt taken through evidence, a scripted model, verification and the route |
 | cross-check | computed daily bars re-derived against the minute bars they came from (`test_computed_daily_matches_the_minute_bars_it_came_from`) |
 
 `scripts/make_fixtures.py` + `market_data/synthetic.py` are the single source of
@@ -421,8 +496,9 @@ byte-identically without a numpy dependency.
   [data-quality.md](data-quality.md#2-duplicate-records).
 - **mypy is pragmatic, not `--strict`** — Polars' scalar accessors return very
   broad unions that make strict mode noisy without adding safety. Strict checks
-  that catch real mistakes are kept; two Polars-heavy modules (`checks/gaps.py`,
-  `checks/outliers.py`) relax a few error codes with an explanatory override.
+  that catch real mistakes are kept; three Polars-heavy modules (`checks/gaps.py`,
+  `checks/outliers.py`, `insights/evidence.py`) relax a few error codes with an
+  explanatory override.
 - **One DuckDB database, one cursor per thread.** FastAPI serves synchronous
   endpoints from a worker pool, and a single DuckDB connection object cannot
   serve concurrent queries — interleaved execute/fetch calls return each
@@ -439,13 +515,32 @@ byte-identically without a numpy dependency.
   dropped, which never touches CME data because it falls in the weekend closure.
   The display zone is a frontend constant that must match
   `MARKET_DATA_DAILY_BAR_TZ`.
+- **Insights are generated on request, not with the report.** They read every
+  occurrence behind every finding rather than the report's capped sample, and
+  each run asks an LLM, which can take tens of seconds and cost money. The
+  dashboard asks only when the button is pressed, and the store pins the request
+  to the selection it was made for, so moving a filter never generates by itself.
+- **Insights need a model; nothing else does.** There is no deterministic
+  fallback: without a reachable endpoint the insights section reports why and
+  offers nothing. The quality report the insights read, and the rest of the
+  dashboard, work without one.
+- **The LLM's reading is shown, not fact-checked.** It only ever sees
+  aggregated evidence (no bars) and is asked to cite it by id, but verification
+  checks only that each pattern and suggestion is well-formed. An invented
+  figure gets through, which is why the dashboard renders each pattern's
+  figures from the evidence rows it cites, beside the explanation rather than
+  instead of it.
 
 ## Extending
 
 | want to… | module | do this |
 |---|---|---|
 | support a new file format | ① | implement `FileReader`, add to `DEFAULT_READERS` |
-| use a real database | ①②③ | implement `BarRepository` |
+| use a real database | ①②③④ | implement `BarRepository` |
 | add an analytic | ② | add a pure function in `domain/analytics/` + a service method |
 | add a dashboard section | ② | a component under `frontend/src/app/`, plus a resource in `store.ts` |
 | add a quality check | ③ | write the function in `domain/quality/checks/`, add it to `all_rules()` |
+| give the model more to reason from | ④ | add a field to `Evidence`, compute it in `domain/insights/evidence.py`, describe it in `llm/prompts.py`, and mirror it in `frontend/src/app/core/models.ts` |
+| offer a new kind of suggested rule | ④ | add a `SuggestionType` and its entry in `domain/insights/catalogue.py` — the prompt lists the catalogue and the JSON schema offers the enum — then add it to `SuggestionType` and `TYPE_LABEL` in the frontend |
+| use a different Claude model | ④ | set `MARKET_DATA_LLM_MODEL` |
+| use a different LLM provider | ④ | write a client beside `llm/claude.py` with the same `model` property and `complete_json(system, user, schema)` method over that provider's LangChain chat model, build it in `api/deps.py`, and widen the `client` type `InsightsService` accepts |

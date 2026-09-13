@@ -5,6 +5,7 @@ and shape results for the presentation layer (API / CLI).
 """
 
 from market_data.services.analytics_service import AnalyticsService
+from market_data.services.insights_service import InsightsService
 from market_data.services.quality_service import QualityService
 
-__all__ = ["AnalyticsService", "QualityService"]
+__all__ = ["AnalyticsService", "InsightsService", "QualityService"]

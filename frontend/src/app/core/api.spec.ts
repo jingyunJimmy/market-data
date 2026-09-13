@@ -115,8 +115,36 @@ describe('MarketDataApi', () => {
     issue(() => api.quality(() => undefined));
     issue(() => api.missingTimestamps(() => undefined));
     issue(() => api.issueDetails(() => undefined));
+    issue(() => api.insights(() => undefined));
 
     http.expectNone(() => true);
+  });
+
+  it('generates insights with a POST carrying the selection but not the run number', () => {
+    // POST because generating is work with a cost. The run number only exists to make
+    // the resource ask again, so it has no business on the wire.
+    issue(() => api.insights(() => ({ ...query, run: 1 })));
+
+    const req = http.expectOne((r) => r.url === '/api/insights');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.params.get('contract')).toBe('CLZ24');
+    expect(req.request.params.get('frequency')).toBe('minute');
+    expect(req.request.params.get('end')).toBe('2024-06-30');
+    expect(req.request.params.has('run')).toBe(false);
+    req.flush(null);
+  });
+
+  it('posts again for a new run even though the filters are unchanged', () => {
+    // Regenerate asks the same question twice; identical parameters must still reach
+    // the server rather than being treated as nothing having changed.
+    const run = signal(1);
+    issue(() => api.insights(() => ({ ...query, run: run() })));
+    http.expectOne((r) => r.url === '/api/insights').flush(null);
+
+    run.set(2);
+    TestBed.tick();
+
+    http.expectOne((r) => r.url === '/api/insights').flush(null);
   });
 
   it('re-requests when the filters move', () => {

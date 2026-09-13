@@ -167,13 +167,9 @@ querying. It is counted by distinct instant, per the formula above.
 | Correct aggregation | one bar per instant, so `daily_ohlcv` volume no longer double-counts and `rolling_vwap` emits strictly increasing timestamps | ✅ |
 | Auditability | full row + `winning_row_hash` in `superseded_bars` | ✅ |
 
-**Caveat of the rule.** Last-write-wins assumes later data is a correction,
-which is how vendors normally issue restatements. It is not always true: if the
-later variant is the corrupted one, the rule keeps the bad value. That is
-exactly why the displaced row is retained in full, and why the conflict is still
-surfaced as a warning rather than resolved in silence. Alternative rules
-(highest volume wins, or agree-with-the-daily-file) would be a change to one
-function, `_resolve_instant_conflicts`.
+**Changing the rule.** Last-write-wins follows how vendors normally issue
+restatements. Alternative rules (highest volume wins, or agree-with-the-daily-file)
+would be a change to one function, `_resolve_instant_conflicts`.
 
 **In the UI.** Duplicates surface as two different findings, and neither is
 read from `bars` — the store cannot contain either by the time the dashboard
@@ -377,22 +373,6 @@ infer anything, and returns nothing when the inferred interval is zero or when
 no spacing clears the threshold. The daily one needs at least 5 observed
 sessions before a business-day diff means anything.
 
-**Two known false negatives** in the minute classifier, both documented in the
-module and worth knowing before reading a report:
-
-1. The weekend test is pure calendar shape with **no ceiling on duration**, and
-   `extended` is computed from what is left after the weekend bucket is removed.
-   So an outage of any length that starts on a Friday or resumes on a Monday can
-   never reach `extended`. On ESZ25 that swallows a 25-day hole (2024-01-18 →
-   2024-02-12, ~36.5k absent bars) and reports it as an expected weekend break.
-2. The `overnight` bucket is misnamed for how these products trade. The real
-   daily halt is 16:00–17:00 Chicago and does *not* cross midnight, so it lands
-   in `intra`; a gap that genuinely crosses midnight on a continuously-traded
-   contract usually means an outage, yet stays INFO as long as it is under 36h.
-
-Both are ceilings, not rewrites: a three-day cap on `weekend` and a much tighter
-one on `overnight` would fix them.
-
 ### In the UI
 
 Gaps appear in **two places**, answering two different questions.
@@ -483,11 +463,6 @@ already an invalid-value finding and here would only produce a NaN), and the
 contract is skipped when `MAD = 0` — that happens when over half the returns are
 identical, a locked or untraded stretch, and dividing by it would put every
 non-flat bar infinitely far out.
-
-**Known weakness.** `r_t` is taken between adjacent *rows* with no regard for
-what separates them, so an overnight or weekend gap is scored as a one-bar move.
-The generous threshold absorbs most of it, but a session boundary is genuinely
-not the same event as a within-session jump and would be better excluded.
 
 ### 5b. Volume — ratio to a rolling local median (INFO)
 
@@ -738,16 +713,11 @@ a bug.
 
 ---
 
-## Known gaps vs. a strict reading of the brief
+## What the findings add up to
 
-1. **Rejected-row audit trail is still a pointer** — for *malformed* rows only a
-   file, row number and reason are stored, not the original values. Superseded
-   rows are the opposite: they keep their full OHLCV (see §2b). To close this
-   fully, `rejected_rows` would gain the same value columns.
-2. **Malformed rows still aggregate** — if ERROR-level malformed bars should be
-   excluded from analytics, filter on the quality result at read time. This is
-   now the *only* remaining case where a flagged row feeds analytics;
-   conflicting duplicates no longer do.
-3. **No exchange calendars** — gap detection infers the trading calendar from the
-   data, so `missing_sessions` includes exchange holidays. Real session and
-   holiday calendars would replace the business-day diff in `_daily_gaps`.
+The report says *what* is wrong and how often. Whether 9,000 gaps are the daily
+halt, a thin book or an outage is a separate question, answered on request by
+the *Intelligent insights* section below the findings: it re-runs the validator
+with every occurrence, summarises each finding into distributions, and asks an
+LLM for recurring patterns and suggested cleansing or validation rules. See
+[insights.md](insights.md).

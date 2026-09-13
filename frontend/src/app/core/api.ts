@@ -5,6 +5,7 @@ import {
   ContractSummary,
   DailyBar,
   Frequency,
+  InsightsReport,
   IssueDetailPage,
   MissingTimestampPage,
   QualityReport,
@@ -34,6 +35,16 @@ export interface MissingQuery extends BarsQuery {
 /** One finding's evidence, paged past the sample the report itself carries. */
 export interface IssueDetailQuery extends MissingQuery {
   code: string;
+}
+
+/** A request to generate insights for a selection. */
+export interface InsightsQuery extends BarsQuery {
+  /**
+   * Which press of the button this is. Never sent: a new number makes a new
+   * request object, which is what makes the resource POST again for unchanged
+   * filters when the user regenerates.
+   */
+  run: number;
 }
 
 /**
@@ -134,6 +145,28 @@ export class MarketDataApi {
       return (
         q && {
           url: `${BASE}/quality/report`,
+          params: {
+            contract: q.contract,
+            frequency: q.frequency,
+            start: q.start,
+            end: q.end,
+          },
+        }
+      );
+    });
+  }
+
+  /**
+   * Generate recurring-pattern insights. A POST, because generating is work with
+   * a cost; the store only supplies a query once the user has asked for it.
+   */
+  insights(query: () => InsightsQuery | undefined) {
+    return httpResource<InsightsReport | undefined>(() => {
+      const q = query();
+      return (
+        q && {
+          url: `${BASE}/insights`,
+          method: 'POST',
           params: {
             contract: q.contract,
             frequency: q.frequency,

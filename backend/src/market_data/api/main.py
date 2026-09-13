@@ -7,7 +7,7 @@ from fastapi import FastAPI
 
 from market_data import __version__
 from market_data.api.deps import get_repo
-from market_data.api.routes import analytics, contracts, quality
+from market_data.api.routes import analytics, contracts, insights, quality
 
 
 @asynccontextmanager
@@ -28,7 +28,7 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
 
-    for module in (contracts, analytics, quality):
+    for module in (contracts, analytics, quality, insights):
         app.include_router(module.router)
     return app
 

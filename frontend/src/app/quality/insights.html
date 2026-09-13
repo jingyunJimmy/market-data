@@ -1,0 +1,135 @@
+<section class="card insights" aria-labelledby="insights-title">
+  <header>
+    <div>
+      <h2 id="insights-title">Intelligent insights</h2>
+      <p class="insights__lede">
+        Recurring quality patterns in this contract and range, and the rules they suggest.
+      </p>
+    </div>
+    <button
+      type="button"
+      class="generate"
+      [disabled]="loading()"
+      (click)="store.generateInsights()"
+    >
+      @if (loading()) {
+        <span class="spinner" aria-hidden="true"></span>
+        Generating…
+      } @else if (store.insightsRequested()) {
+        Regenerate
+      } @else {
+        Generate insights
+      }
+    </button>
+  </header>
+
+  @if (!store.insightsRequested()) {
+    <p class="placeholder">
+      Generated on request by an LLM reading statistics computed from the findings above. Each
+      pattern is shown beside the statistics it cites, so its reasoning can be checked.
+    </p>
+  } @else if (loading()) {
+    <p class="placeholder placeholder--loading">
+      <span class="spinner" aria-hidden="true"></span>
+      The model is reading the findings for recurring patterns…
+    </p>
+  } @else if (failed()) {
+    <p class="placeholder placeholder--error">
+      Could not generate insights.
+      @if (failureReason(); as reason) {
+        <span class="failure__reason">{{ reason }}</span>
+      }
+    </p>
+  } @else {
+    @if (report(); as report) {
+      <p class="insights__meta">
+        <span class="source">{{ source(report) }}</span>
+        <span>
+          {{ count(report.patterns.length) }}
+          {{ report.patterns.length === 1 ? 'pattern' : 'patterns' }} ·
+          {{ count(report.suggestions.length) }}
+          {{ report.suggestions.length === 1 ? 'suggestion' : 'suggestions' }} · generated
+          {{ generatedAt(report) }}
+        </span>
+      </p>
+
+      @if (!views().length) {
+        <p class="placeholder placeholder--clean">No recurring patterns in this range.</p>
+      } @else {
+        <ol class="patterns">
+          @for (view of views(); track view.pattern.id) {
+            <li class="pattern">
+              <div class="pattern__head">
+                <span class="tag tag--{{ view.pattern.classification }}">
+                  {{ classification(view.pattern) }}
+                </span>
+                <span class="confidence">{{ view.pattern.confidence }} confidence</span>
+              </div>
+              <h3>{{ view.pattern.title }}</h3>
+              <p class="pattern__why">{{ view.pattern.explanation }}</p>
+
+              @for (evidence of view.evidence; track evidence.id) {
+                <p class="facts">
+                  <code>{{ evidence.code }}</code>
+                  @for (fact of facts(evidence); track $index) {
+                    <span class="fact">{{ fact }}</span>
+                  }
+                </p>
+              }
+
+              @if (view.suggestions.length) {
+                <ul class="suggestions">
+                  @for (suggestion of view.suggestions; track $index) {
+                    <li class="suggestion">
+                      <div class="suggestion__head">
+                        <strong>{{ typeLabel(suggestion) }}</strong>
+                        <span class="kind kind--{{ suggestion.kind }}">{{ suggestion.kind }}</span>
+                      </div>
+                      @if (description(suggestion); as rule) {
+                        <p class="suggestion__rule">{{ rule }}</p>
+                      }
+                      @if (params(suggestion).length) {
+                        <dl class="params">
+                          @for (param of params(suggestion); track param[0]) {
+                            <div>
+                              <dt>{{ param[0] }}</dt>
+                              <dd>
+                                <code>{{ param[1] }}</code>
+                              </dd>
+                            </div>
+                          }
+                        </dl>
+                      }
+                      <p class="suggestion__why">{{ suggestion.rationale }}</p>
+                    </li>
+                  }
+                </ul>
+              }
+            </li>
+          }
+        </ol>
+      }
+
+      <!--
+        What verification threw out, and why. Shown rather than hidden: seeing
+        the refusals is how a reader learns to trust what was kept.
+      -->
+      @if (report.rejected.length) {
+        <details class="rejected">
+          <summary>
+            {{ report.rejected.length }}
+            {{ report.rejected.length === 1 ? 'item' : 'items' }} removed by verification
+          </summary>
+          <ul>
+            @for (rejection of report.rejected; track $index) {
+              <li>
+                <span class="rejected__stage">{{ rejection.stage }}</span>
+                {{ rejection.item ?? 'unnamed' }} {{ rejection.reason }}
+              </li>
+            }
+          </ul>
+        </details>
+      }
+    }
+  }
+</section>

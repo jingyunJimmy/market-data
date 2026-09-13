@@ -19,10 +19,10 @@ still the point.
 | HTTP | `fastapi.testclient.TestClient` (real ASGI app) | `HttpTestingController` (`provideHttpClientTesting`) |
 | Coverage | `pytest-cov` (branch) | `@vitest/coverage-v8` |
 | Static checks | `ruff check` + `ruff format --check`, `mypy src` | `prettier --check` |
-| Tests | 116 | 77 |
-| Coverage | **96 %** statements/branches | **97 %** statements, **86 %** branches |
+| Tests | 157 | 107 |
+| Coverage | **97 %** statements/branches | **97 %** statements, **83 %** branches |
 
-Both suites run in under three seconds, which is why they are run on every
+Both suites run in under five seconds, which is why they are run on every
 change rather than before a commit.
 
 ### Commands
@@ -123,7 +123,7 @@ fails here instead of coincidentally agreeing.
 | **Unordered input** | Nothing guarantees a frame arrives sorted — concatenated sources, a re-ingested correction | First and last are decided by `ts`, never by row position |
 | **A session crossing midnight UTC** | A futures session runs through midnight; grouping on the UTC *date* would split it in two and truncate both halves | Grouped on `trading_date`: one bar, opening at 23:00 and closing at 01:00 the next UTC day |
 | **Null volume on some bars** | A null propagating through `sum` would null the session total | Skipped; the session totals the bars that have one |
-| **Null volume on *every* bar** | — | Reports `0`, which reads identically to "did not trade". Documented in the test as a known ambiguity nothing downstream distinguishes |
+| **Null volume on *every* bar** | — | Reports `0` |
 | **Open interest** | Summing it would multiply the position count by the bar count | Carried forward as a *level*: the last value actually **reported**, so a trailing null does not erase it |
 | **Null price at either end** | Cannot arrive from a file (ingestion rejects it), but the function is also called on hand-assembled frames | Falls through to the nearest bar that has a price |
 | **Already-daily input** | The same endpoint serves both frequencies | Collapses against itself: one bar per session, unchanged, `bar_count == 1` |
@@ -356,6 +356,54 @@ understate exactly the problem the truncation flag exists to signal.
   9 594 gaps, and a per-issue tally would read as 1. A clean report tallies `{}`,
   not zeros, because the dashboard renders on presence.
 
+### 4.7 Intelligent insights
+
+[`test_insights_evidence.py`](../backend/tests/unit/test_insights_evidence.py),
+[`test_insights_verify.py`](../backend/tests/unit/test_insights_verify.py),
+[`test_insights_service.py`](../backend/tests/unit/test_insights_service.py),
+[`test_llm.py`](../backend/tests/unit/test_llm.py)
+
+An insight is only as trustworthy as the evidence under it, so most of these
+tests are about the evidence and about how the pipeline fails, rather than
+about wording.
+
+**Evidence.** Reports are hand-built so each test names the occurrences it is about.
+
+| Edge case | Why it is a trap | Expected |
+|---|---|---|
+| Hours | 21:00 UTC is the 16:00 CT halt; counted in UTC it looks like nothing in particular | Counted in exchange time |
+| A late-evening occurrence | 03:00 UTC on Tuesday is Monday evening in Chicago | Filed under Monday, hour 22 |
+| Daily findings | A daily `ts` is a date at UTC midnight; shifted into Chicago it lands on the previous day | Kept on its own date, with no hours, and no share of sessions for a *missing* session |
+| "After a gap" | A gap detail's `end_ts` is the last *missing* bar | Measured from the bar that resumed the series, one interval later |
+| A gap finding that does not state its interval | Only `intra_session_gap` carries it | Inferred from the detail's own length and missing bars |
+| A capped finding | A sample must not pass for the whole | `analysed` reports the rows read; `per_1k_bars` uses the real count |
+
+**Verification** checks the schema and nothing more, and the tests pin exactly
+that: a complete pattern or suggestion passes untouched, its params exactly as
+sent; an enum value that does not exist, a bad `type` or `kind`, or a null
+rationale is refused with the offending field named in the reason; and one
+malformed item costs only itself, so the good item beside it survives. Nothing
+checks a figure, a citation or a parameter against the evidence, so no test
+claims to.
+
+**Service.** `InsightsService` is driven by a fake client: an answer without the
+expected `patterns` or `suggestions` list is an `InsightProviderError` rather
+than zero patterns, and an empty pack makes no pattern call, just as no
+patterns makes no suggestion call.
+
+**LLM adapter.** No model is called: `ClaudeClient` takes its LangChain chat
+model as a parameter, so a scripted one stands in and replays a
+`with_structured_output(..., include_raw=True)`-shaped answer (`raw`, `parsed`,
+`parsing_error`) or raises the Anthropic SDK exception LangChain would.
+Structured output is requested with `method="json_schema"`, Claude's own
+schema-constrained format, so no code-fence stripping or a `json_object`
+fallback is needed. Every way of *not* getting an answer — a refusal, an
+answer cut off at `max_tokens`, a parsing failure or no parsed output, a
+404/429/401, an unreachable endpoint — is an `InsightProviderError`, which the route reports
+as a 503 with the reason. The schemas are asserted to offer exactly the
+domain's enums, so the prompt cannot drift from the models, and to carry the
+title LangChain needs before it will send a raw JSON Schema.
+
 ---
 
 ## 5. Backend — integration
@@ -418,6 +466,21 @@ codes and the JSON shape a client parses.
   are gap-free and a listing test against them would pass while asserting
   nothing.
 
+[`test_insights.py`](../backend/tests/integration/test_insights.py) plants one
+unmistakable regularity — the 16:00–17:00 CT halt missing from five sessions —
+and takes it through bars → validator → evidence → a scripted provider →
+verification → route. No model is called. The evidence the model is shown must
+reveal the halt (hour 16, every session, a 61-minute median) and must read every
+occurrence even with the dashboard's detail cap set to 2. A scripted model that
+is right about one pattern and invents a trend in another has **both** kept,
+because verification checks shape rather than grounding, and both are what the
+suggestion call is shown. Of its suggestions, the two well-formed ones survive,
+including a threshold change the pattern says nothing about, and one whose
+`type` does not exist is reported in `rejected` with its reason. A model that cannot answer raises rather than returning an empty report,
+and on the wire that is a **503 that says why**, not a 500. `POST` only (a `GET`
+is 405, because generating must never be a side effect of a read), a contract is
+required, and an empty range returns no patterns without calling the model.
+
 ### 5.4 The CLI
 
 [`test_ingest_script.py`](../backend/tests/integration/test_ingest_script.py) —
@@ -444,6 +507,7 @@ against a **fake store** or a **stubbed child**, so each spec asserts one layer.
 | [`app.spec.ts`](../frontend/src/app/app.spec.ts) | Shell: filters, tabs, empty states, the time-zone note |
 | [`analytics.spec.ts`](../frontend/src/app/analytics/analytics.spec.ts) | Headline figures and **chart series** |
 | [`quality.spec.ts`](../frontend/src/app/quality/quality.spec.ts) | Findings table, evidence drill-down, missing listing |
+| [`insights.spec.ts`](../frontend/src/app/quality/insights.spec.ts) | Insights section: on request only, evidence figures, failure reasons and rejections |
 | [`stat.spec.ts`](../frontend/src/app/shared/stat.spec.ts) | The dumb stat tile |
 
 ### 6.1 Charts — how they are tested without a canvas
@@ -529,6 +593,11 @@ everything" (`expectNone`), and moving a filter must **refetch on its own**,
 since the resource tracks whichever signals the query function reads and no
 subscription is written anywhere.
 
+Insights are the one `POST`. The request carries the selection but **not** the
+run number, which exists only to make the resource ask again, and a new run is
+asserted to post again with unchanged filters — otherwise Regenerate would do
+nothing.
+
 ### 6.4 The store
 
 Tested through a `FakeApi` that **records each query function** and evaluates it
@@ -546,6 +615,11 @@ on demand, so the store's intent is read with no HTTP in the picture.
   toggling an open finding closes it, switching findings starts the new one at
   its **first** page, and a new filter **rewinds both pagers** and closes the
   open finding.
+- **Insights on request:** no insights query until the button is pressed, none
+  before a selection exists, a new run on every press, and a filter change drops
+  the request **at once** — before any effect runs, because the resource may read
+  the query first — so returning to the old selection does not quietly generate
+  again.
 
 ### 6.5 Shell and quality panel
 
@@ -573,28 +647,29 @@ and a range with nothing missing reads as clean rather than empty. Finding
 timestamps print in Chicago time on minute data, and as the bare, unshifted date
 on daily data.
 
+The insights section shows a button and nothing else until it is pressed (and
+the quality page is asserted not to press it), disables the button while a run
+is in flight so runs cannot stack, and renders each pattern's figures **from its
+evidence rows** rather than from the explanation — the explanation in the test
+deliberately contains no figures. A custom rule reads as a sentence rather than
+a parameter table, output is labelled AI-assisted with the model's name, a
+failed run passes on the API's reason (an unreachable model, say), and whatever
+verification removed is listed with its reasons.
+
 ---
 
-## 7. Coverage, and what is deliberately not covered
+## 7. Coverage
 
-**Backend — 96 %** statements and branches. The uncovered remainder is
+**Backend — 97 %** statements and branches. The uncovered remainder is
 concentrated in [`missing.py`](../backend/src/market_data/domain/quality/missing.py)
 (74 %), [`duckdb_repo.py`](../backend/src/market_data/storage/duckdb_repo.py)
-(87 %) and [`gaps.py`](../backend/src/market_data/domain/quality/checks/gaps.py)
-(90 %) — mostly defensive branches on shapes the pipeline upstream of them
-cannot produce.
+(96 %), [`gaps.py`](../backend/src/market_data/domain/quality/checks/gaps.py)
+(90 %) and [`verify.py`](../backend/src/market_data/domain/insights/verify.py)
+(93 %) — mostly defensive branches on shapes the pipeline upstream of them
+cannot produce, and in `verify.py` the fallbacks for labelling a draft that
+has no usable name.
 
-**Frontend — 97 %** statements, 99 % lines, **86 %** branches. Branch coverage
+**Frontend — 97 %** statements, 98 % lines, **83 %** branches. Branch coverage
 is the lower figure because template null-guards have two arms and the specs
 exercise the one that matters. Coverage excludes `chart.ts` (§6.1) and
 `app.config.ts` (framework wiring).
-
-Not covered, and the reasoning:
-
-| Not done | Why |
-|---|---|
-| Browser end-to-end tests (Playwright/Cypress) | The API contract is pinned from both sides — FastAPI route tests and `HttpTestingController` param assertions — which catches the failure an e2e run would catch here, at a fraction of the runtime |
-| Visual regression / screenshot tests | Colour and layout are asserted through **class names** (`value--error`) rather than pixels, so restyling does not break tests |
-| Load and performance tests | Paging limits are asserted for correctness, not throughput |
-| Accessibility assertions | Not scoped |
-| Mutation testing | Would be the natural next step: it is the check that the oracle and property tests above are actually as strict as they read |

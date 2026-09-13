@@ -49,6 +49,9 @@ describe('Quality', () => {
     previousDetailPage: ReturnType<typeof vi.fn>;
     nextMissingPage: ReturnType<typeof vi.fn>;
     previousMissingPage: ReturnType<typeof vi.fn>;
+    insights: ReturnType<typeof resource>;
+    insightsRequested: WritableSignal<boolean>;
+    generateInsights: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -65,6 +68,9 @@ describe('Quality', () => {
       previousDetailPage: vi.fn(),
       nextMissingPage: vi.fn(),
       previousMissingPage: vi.fn(),
+      insights: resource<unknown>(undefined),
+      insightsRequested: signal(false),
+      generateInsights: vi.fn(),
     };
 
     TestBed.configureTestingModule({
@@ -125,6 +131,14 @@ describe('Quality', () => {
       store.quality.error.set(new Error('boom'));
 
       expect(text(render())).toContain('Could not load the quality report');
+    });
+
+    it('carries the insights section, waiting for its button rather than generating', () => {
+      // Opening the page must cost one report, not a report plus a model call.
+      const button = render().nativeElement.querySelector('app-insights button.generate');
+
+      expect(button?.textContent).toContain('Generate insights');
+      expect(store.generateInsights).not.toHaveBeenCalled();
     });
   });
 

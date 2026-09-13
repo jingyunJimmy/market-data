@@ -205,10 +205,7 @@ from "a string that was never a time".
 It is taken from the file's own `trading_date` (or a daily `date`) when present;
 otherwise, for minute bars, `ts` is converted **back** to the exchange timezone
 (`MARKET_DATA_DAILY_BAR_TZ`, `America/Chicago`) before taking the date, so a
-Chicago evening is not split at midnight UTC. It is a calendar date rather than
-the CME session date: in the sample dataset, CLG26's bars from the Sunday 17:00 CT
-open carry Sunday's date, not Monday's (see
-[dashboard-charts.md, Known issues](dashboard-charts.md#known-issues)). The
+Chicago evening is not split at midnight UTC. The
 dashboard's date filter, candles and displayed times all use this same Chicago
 calendar.
 
@@ -377,7 +374,7 @@ scopes:
 Every displaced row is written to `superseded_bars` with all its values, its
 provenance, and the `winning_row_hash` of the row that replaced it. The quality
 report surfaces them as `resolved_instant_conflict` (WARNING), so resolving a
-conflict never hides it. The rationale, the caveat of last-write-wins, and how
+conflict never hides it. The rationale and how
 to change the rule are in
 [data-quality.md §2b](data-quality.md#2b-conflicting-duplicates--same-contract-frequency-ts-different-ohlcv).
 
