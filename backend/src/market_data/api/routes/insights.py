@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -9,6 +10,8 @@ from market_data.domain.insights import InsightsReport
 from market_data.domain.models import Frequency
 from market_data.llm import InsightProviderError
 from market_data.services import InsightsService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/insights", tags=["insights"])
 
@@ -34,6 +37,7 @@ def generate_insights(
     try:
         return svc.generate(contract=contract, frequency=frequency, start=start, end=end)
     except InsightProviderError as exc:
+        logger.warning("Insights failed for %s: %s", contract, exc)
         # Not a 500: the application is fine, the model behind it is not. The
         # message names the endpoint and never a key, so it is safe to show.
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc

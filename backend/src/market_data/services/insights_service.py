@@ -10,6 +10,8 @@ left to propagate: there is no answer to show, and the route reports why.
 from __future__ import annotations
 
 import datetime as dt
+import logging
+import time
 from collections.abc import Callable, Sequence
 
 from market_data.config import Settings, get_settings
@@ -33,6 +35,8 @@ from market_data.llm.prompts import (
     suggestions_schema,
 )
 from market_data.storage.repository import BarRepository
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> dt.datetime:
@@ -61,9 +65,28 @@ class InsightsService:
         start: dt.date | None = None,
         end: dt.date | None = None,
     ) -> InsightsReport:
+        started = time.monotonic()
+        logger.info(
+            "Generating insights: contract=%s frequency=%s range=%s..%s",
+            contract,
+            frequency.value,
+            start or "first",
+            end or "last",
+        )
         pack = self.evidence(contract=contract, frequency=frequency, start=start, end=end)
+        logger.info(
+            "Evidence pack built: %d findings over %s bars, %d trading days",
+            len(pack.evidence),
+            f"{pack.scope.bars_checked:,}",
+            pack.scope.trading_days,
+        )
+        logger.info("Step 1/2: identifying patterns")
         patterns, rejected = verify_patterns(self._identify_patterns(pack))
+        logger.info("Step 1/2 done: %d patterns kept, %d rejected", len(patterns), len(rejected))
+        logger.info("Step 2/2: suggesting rules")
         suggestions, dropped = verify_suggestions(self._suggest_rules(pack, patterns))
+        logger.info("Step 2/2 done: %d suggestions kept, %d rejected", len(suggestions), len(dropped))
+        logger.info("Insights ready for %s in %.1fs", contract, time.monotonic() - started)
         return InsightsReport(
             scope=pack.scope,
             model=self._client.model,
@@ -108,6 +131,7 @@ class InsightsService:
     def _identify_patterns(self, pack: EvidencePack) -> list[object]:
         if not pack.evidence:
             # Nothing to read; not worth a round trip.
+            logger.info("No quality findings in range; skipping the Claude call")
             return []
         answer = self._client.complete_json(
             system=PATTERNS_SYSTEM, user=patterns_prompt(pack), schema=patterns_schema()
@@ -116,6 +140,7 @@ class InsightsService:
 
     def _suggest_rules(self, pack: EvidencePack, patterns: Sequence[Pattern]) -> list[object]:
         if not patterns:
+            logger.info("No patterns to build on; skipping the Claude call")
             return []
         answer = self._client.complete_json(
             system=SUGGESTIONS_SYSTEM, user=suggestions_prompt(pack, patterns), schema=suggestions_schema()

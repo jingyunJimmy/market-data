@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -10,8 +11,26 @@ from market_data.api.deps import get_repo
 from market_data.api.routes import analytics, contracts, insights, quality
 
 
+def _configure_logging() -> None:
+    """Print the app's own INFO logs in the server terminal, beside uvicorn's.
+
+    uvicorn configures only its own loggers, so without a handler here the
+    ``market_data.*`` INFO records -- insights progress among them -- go nowhere.
+    """
+    app_logger = logging.getLogger("market_data")
+    if app_logger.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter("%(levelname)-9s %(asctime)s %(name)s - %(message)s", datefmt="%H:%M:%S")
+    )
+    app_logger.addHandler(handler)
+    app_logger.setLevel(logging.INFO)
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    _configure_logging()
     get_repo()  # open + initialise the DuckDB store on startup
     yield
 

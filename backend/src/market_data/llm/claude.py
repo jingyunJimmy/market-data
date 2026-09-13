@@ -13,11 +13,21 @@ Every failure to get a parseable answer is raised as
 
 from __future__ import annotations
 
+import logging
+import threading
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import anthropic
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
+
+logger = logging.getLogger(__name__)
+
+HEARTBEAT_S = 15.0
+"""How often a still-outstanding call is logged, so a long wait reads as progress rather than a hang."""
 
 
 class InsightProviderError(RuntimeError):
@@ -49,9 +59,15 @@ class ClaudeClient:
         return self._model
 
     def complete_json(self, *, system: str, user: str, schema: dict[str, Any]) -> object:
+        task = schema.get("title", "answer")
         structured = self._llm.with_structured_output(schema, method="json_schema", include_raw=True)
+        logger.info(
+            "Asking Claude (%s) for %s, prompt %s chars", self._model, task, f"{len(system) + len(user):,}"
+        )
+        started = time.monotonic()
         try:
-            result = structured.invoke([SystemMessage(system), HumanMessage(user)])
+            with _heartbeat(task, started):
+                result: Any = structured.invoke([SystemMessage(system), HumanMessage(user)])
         except anthropic.NotFoundError as exc:
             raise InsightProviderError(
                 f"Claude model {self._model!r} is not available: {exc.message}"
@@ -62,7 +78,34 @@ class ClaudeClient:
             raise InsightProviderError(f"Claude API returned HTTP {exc.status_code}: {exc.message}") from exc
         except anthropic.APIConnectionError as exc:
             raise InsightProviderError(f"Claude API is unreachable: {exc}") from exc
+        usage = getattr(result["raw"], "usage_metadata", None) or {}
+        logger.info(
+            "Claude answered %s in %.1fs (stop_reason=%s, input_tokens=%s, output_tokens=%s)",
+            task,
+            time.monotonic() - started,
+            result["raw"].response_metadata.get("stop_reason"),
+            usage.get("input_tokens", "?"),
+            usage.get("output_tokens", "?"),
+        )
         return _parsed(result)
+
+
+@contextmanager
+def _heartbeat(task: str, started: float, every_s: float = HEARTBEAT_S) -> Iterator[None]:
+    """Logs every ``every_s`` until the wrapped call returns or raises."""
+    done = threading.Event()
+
+    def beat() -> None:
+        while not done.wait(every_s):
+            logger.info("Still waiting on Claude for %s (%.0fs elapsed)", task, time.monotonic() - started)
+
+    thread = threading.Thread(target=beat, name="claude-heartbeat", daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        done.set()
+        thread.join()
 
 
 def _parsed(result: Any) -> object:
